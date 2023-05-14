@@ -11,6 +11,7 @@ import (
 	_ "github.com/benthosdev/benthos/v4/public/components/pure"
 
 	_ "github.com/turnon/clams/input"
+	_ "github.com/turnon/clams/output"
 )
 
 func main() {

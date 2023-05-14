@@ -82,7 +82,7 @@ func newTablestoreInput(conf *service.ParsedConfig) (service.Input, error) {
 
 func init() {
 	err := service.RegisterInput(
-		"tablestore",
+		"tablestorescanner",
 		tablestoreConfigSpec,
 		func(conf *service.ParsedConfig, mgr *service.Resources) (service.Input, error) {
 			return newTablestoreInput(conf)

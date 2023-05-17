@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/aliyun/aliyun-tablestore-go-sdk v1.7.7
 	github.com/benthosdev/benthos/v4 v4.15.0
+	github.com/rs/xid v1.5.0
 )
 
 require (

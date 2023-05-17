@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/benthosdev/benthos/v4/public/service"
 	"github.com/rs/xid"
@@ -58,10 +57,9 @@ func newMysqlloaddata(conf *service.ParsedConfig) (service.BatchOutput, error) {
 	}
 
 	return &mysqlloaddata{
-		table:           table,
-		localFilePrefix: xid.New().String(),
-		fromCols:        fromCols,
-		toCols:          toCols,
+		table:    table,
+		fromCols: fromCols,
+		toCols:   toCols,
 	}, nil
 }
 
@@ -91,10 +89,11 @@ func newBatchPolicy(conf *service.ParsedConfig) (service.BatchPolicy, error) {
 //------------------------------------------------------------------------------
 
 type mysqlloaddata struct {
-	table           string
-	localFilePrefix string
-	fromCols        []string
-	toCols          []string
+	table         string
+	localFilePath string
+	loadDataCmd   string
+	fromCols      []string
+	toCols        []string
 }
 
 func (loaddata *mysqlloaddata) Connect(ctx context.Context) error {
@@ -104,20 +103,52 @@ func (loaddata *mysqlloaddata) Connect(ctx context.Context) error {
 func (loaddata *mysqlloaddata) WriteBatch(ctx context.Context, msgs service.MessageBatch) error {
 	fileName := loaddata.generateLocalFileName()
 	content, err := loaddata.generateLocalFileContent(msgs)
+	cmd := loaddata.generateLoadCmd(fileName)
 	if err != nil {
 		return err
 	}
 	fmt.Println(fileName, len(msgs))
 	fmt.Println(*content)
+	fmt.Println(cmd)
 
 	return nil
 }
 
+// 生成loaddata命令
+func (loaddata *mysqlloaddata) generateLoadCmd(fileName string) string {
+	if loaddata.loadDataCmd != "" {
+		return loaddata.loadDataCmd
+	}
+
+	cmd := `LOAD DATA LOCAL INFILE %s
+	REPLACE
+	INTO TABLE %s
+	FIELDS TERMINATED BY ';' ENCLOSED BY '"'
+	(%s)
+	SET %s`
+
+	fieldsArr := make([]string, 0, len(loaddata.toCols))
+	setFiledsArr := make([]string, 0, len(loaddata.toCols))
+	for _, col := range loaddata.toCols {
+		field := "@" + col
+		fieldsArr = append(fieldsArr, field)
+		setFiledsArr = append(setFiledsArr, col+" = NULLIF("+field+", '')")
+	}
+
+	loaddata.loadDataCmd = fmt.Sprintf(cmd, loaddata.generateLocalFileName(), loaddata.table, strings.Join(fieldsArr, ", "), strings.Join(setFiledsArr, ", "))
+	return loaddata.loadDataCmd
+}
+
 // 生成localfile文件名
 func (loaddata *mysqlloaddata) generateLocalFileName() string {
-	timeNow := time.Now().Format("20060102.150405")
-	fileName := strings.Join([]string{loaddata.table, loaddata.localFilePrefix, timeNow, "csv"}, ".")
-	return filepath.Join("/tmp", fileName)
+	if loaddata.localFilePath != "" {
+		return loaddata.localFilePath
+	}
+
+	guid := xid.New().String()
+	fileName := strings.Join([]string{loaddata.table, guid, "csv"}, ".")
+	loaddata.localFilePath = filepath.Join("/tmp", fileName)
+	return loaddata.localFilePath
 }
 
 // 生成localfile文件内容

@@ -22,6 +22,12 @@ var tablestoreConfigSpec = service.NewConfigSpec().
 	Field(service.NewStringField("column")).
 	Field(service.NewStringField("ge")).
 	Field(service.NewStringField("lt")).
+	Field(service.NewObjectListField(
+		"filters",
+		service.NewStringField("column"),
+		service.NewStringField("operator"),
+		service.NewAnyField("value")),
+	).
 	Field(service.NewIntField("limit").Default(0))
 
 func newTablestoreInput(conf *service.ParsedConfig) (service.Input, error) {
@@ -66,6 +72,28 @@ func newTablestoreInput(conf *service.ParsedConfig) (service.Input, error) {
 		return nil, err
 	}
 
+	// filters
+	filters, err := conf.FieldObjectList("filters")
+	if err != nil {
+		return nil, err
+	}
+	filterArr := make([]tablestoreInputFilter, 0, len(filters))
+	for _, filter := range filters {
+		column, err := filter.FieldString("column")
+		if err != nil {
+			return nil, err
+		}
+		operator, err := filter.FieldString("operator")
+		if err != nil {
+			return nil, err
+		}
+		value, err := filter.FieldAny("value")
+		if err != nil {
+			return nil, err
+		}
+		filterArr = append(filterArr, tablestoreInputFilter{column: column, operator: operator, value: value})
+	}
+
 	return service.AutoRetryNacks(&tablestoreInput{
 		endPoint:        endPoint,
 		instanceName:    instanceName,
@@ -77,6 +105,7 @@ func newTablestoreInput(conf *service.ParsedConfig) (service.Input, error) {
 		ge:              ge,
 		lt:              lt,
 		limit:           limit,
+		filters:         filterArr,
 	}), nil
 }
 
@@ -101,17 +130,24 @@ type tablestoreInput struct {
 	accessKeyId     string
 	accessKeySecret string
 
-	table  string
-	index  string
-	column string
-	ge     string
-	lt     string
-	limit  int
+	table   string
+	index   string
+	column  string
+	ge      string
+	lt      string
+	limit   int
+	filters []tablestoreInputFilter
 
 	client     *tablestore.TableStoreClient
 	batchRowGt *batchRowGetter
 
 	rowOrErr chan rowOrError
+}
+
+type tablestoreInputFilter struct {
+	column   string
+	operator string
+	value    any
 }
 
 type rowOrError struct {
@@ -170,12 +206,65 @@ func (ts *tablestoreInput) sessionId() (*tablestore.ComputeSplitsResponse, error
 	return ts.client.ComputeSplits(computeSplitsReq)
 }
 
-func (ts *tablestoreInput) startLoop(sessionId []byte) {
+func (ts *tablestoreInput) makeFilters() []search.Query {
 	rangeQuery := &search.RangeQuery{}
 	rangeQuery.FieldName = ts.column
 	rangeQuery.GTE(ts.ge)
 	rangeQuery.LT(ts.lt)
 	searchQueries := []search.Query{rangeQuery}
+
+	for _, filter := range ts.filters {
+		query := ts.makeFilter(filter.column, filter.operator, filter.value)
+		searchQueries = append(searchQueries, query)
+	}
+
+	return searchQueries
+}
+
+func (ts *tablestoreInput) makeFilter(column string, operator string, value any) search.Query {
+	if operator == "eq" {
+		q := &search.TermQuery{}
+		q.FieldName = column
+		q.Term = value
+		return q
+	} else if operator == "exists" {
+		q := &search.ExistsQuery{}
+		q.FieldName = column
+		return q
+	} else if operator == "prefix" {
+		q := &search.PrefixQuery{}
+		q.FieldName = column
+		q.Prefix = value.(string)
+		return q
+	} else if operator == "terms" {
+		q := &search.TermsQuery{}
+		q.FieldName = column
+		strs := value.([]string)
+		interfaces := make([]interface{}, 0, len(strs))
+		for _, str := range strs {
+			interfaces = append(interfaces, str)
+		}
+		q.Terms = interfaces
+		return q
+	} else {
+		q := &search.RangeQuery{}
+		q.FieldName = column
+		switch operator {
+		case "ge":
+			q.GTE(value)
+		case "gt":
+			q.GT(value)
+		case "le":
+			q.LTE(value)
+		case "lt":
+			q.LT(value)
+		}
+		return q
+	}
+}
+
+func (ts *tablestoreInput) startLoop(sessionId []byte) {
+	searchQueries := ts.makeFilters()
 
 	query := search.NewScanQuery().
 		SetQuery(&search.BoolQuery{MustQueries: searchQueries}).

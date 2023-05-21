@@ -3,7 +3,11 @@ package clickhousebatch
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/benthosdev/benthos/v4/public/service"
 )
 
@@ -146,6 +150,7 @@ func newClickhousebatchTable(conf *service.ParsedConfig) (clickhousebatchTable, 
 type clickhousebatch struct {
 	connect clickhousebatchConnect
 	table   clickhousebatchTable
+	conn    driver.Conn
 }
 
 type clickhousebatchConnect struct {
@@ -169,7 +174,91 @@ type clickhousebatchTableColumn struct {
 }
 
 func (ckb *clickhousebatch) Connect(ctx context.Context) error {
-	fmt.Println(ckb)
+	conn, err := clickhouse.Open(&clickhouse.Options{
+		Addr: ckb.connect.addrs,
+		Auth: clickhouse.Auth{
+			Database: ckb.connect.database,
+			Username: ckb.connect.username,
+			Password: ckb.connect.password,
+		},
+		Debug:        false,
+		DialTimeout:  2 * time.Second,
+		MaxOpenConns: 1,
+		MaxIdleConns: 1,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if err := conn.Ping(ctx); err != nil {
+		return err
+	}
+
+	ckb.conn = conn
+
+	if err := ckb.createTable(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ckb *clickhousebatch) createTable(ctx context.Context) error {
+	var ddl strings.Builder
+	ddl.WriteString("create table if not exists ")
+	ddl.WriteString(ckb.table.name)
+	ddl.WriteString("(")
+
+	// 字段
+	lastColIdx := len(ckb.table.columns) - 1
+	for idx, col := range ckb.table.columns {
+		ddl.WriteString(col.name)
+		ddl.WriteString(" ")
+		ddl.WriteString(col.ty)
+		if idx != lastColIdx {
+			ddl.WriteString(", ")
+		}
+	}
+
+	ddl.WriteString(")")
+	ddl.WriteString("engine=")
+
+	// 引擎
+	engine := ckb.table.engine
+	if engine == "" {
+		engine = "MergeTree"
+	}
+	ddl.WriteString(engine)
+
+	// 排序
+	ddl.WriteString(" order by (")
+	lastOrdIdx := len(ckb.table.order) - 1
+	for idx, order := range ckb.table.order {
+		ddl.WriteString(order)
+		if idx != lastOrdIdx {
+			ddl.WriteString(", ")
+		}
+	}
+	ddl.WriteString(")")
+
+	// 分区
+	partitionLen := len(ckb.table.partition)
+	if partitionLen > 0 {
+		lastpartIdx := partitionLen - 1
+		ddl.WriteString(" partition by (")
+		for idx, partitionExpr := range ckb.table.partition {
+			ddl.WriteString(partitionExpr)
+			if idx != lastpartIdx {
+				ddl.WriteString(", ")
+			}
+		}
+		ddl.WriteString(")")
+	}
+
+	if err := ckb.conn.Exec(ctx, ddl.String()); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -179,5 +268,5 @@ func (ckb *clickhousebatch) WriteBatch(ctx context.Context, msgs service.Message
 }
 
 func (ckb *clickhousebatch) Close(ctx context.Context) error {
-	return nil
+	return ckb.conn.Close()
 }

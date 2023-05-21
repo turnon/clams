@@ -12,9 +12,13 @@ import (
 func init() {
 	err := service.RegisterOutput(
 		"stdoutvertical",
-		service.NewConfigSpec(),
+		service.NewConfigSpec().Field(service.NewBoolField("meta").Default(false)),
 		func(conf *service.ParsedConfig, mgr *service.Resources) (out service.Output, maxInFlight int, err error) {
-			return &stdoutvertical{}, 1, nil
+			meta, err := conf.FieldBool("meta")
+			if err != nil {
+				return nil, 1, err
+			}
+			return &stdoutvertical{meta: meta}, 1, nil
 		},
 	)
 	if err != nil {
@@ -26,6 +30,7 @@ func init() {
 
 type stdoutvertical struct {
 	count uint64
+	meta  bool
 }
 
 func (stdver *stdoutvertical) Connect(ctx context.Context) error {
@@ -59,6 +64,18 @@ func (stdver *stdoutvertical) Write(ctx context.Context, msg *service.Message) e
 		sb.WriteString(vStr)
 		sb.WriteString("\n")
 	}
+
+	if stdver.meta {
+		sb.WriteString("---\n")
+		msg.MetaWalk(func(k string, v string) error {
+			sb.WriteString(k)
+			sb.WriteString(": ")
+			sb.WriteString(v)
+			sb.WriteString("\n")
+			return nil
+		})
+	}
+
 	sb.WriteString("\n")
 
 	fmt.Println(sb)

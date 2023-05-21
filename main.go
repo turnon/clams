@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/turnon/clams/input"
 	_ "github.com/turnon/clams/output"
+	_ "github.com/turnon/clams/processor"
 )
 
 func main() {

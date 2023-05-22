@@ -11,6 +11,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/benthosdev/benthos/v4/public/service"
+	"github.com/turnon/clams/util"
 )
 
 func init() {
@@ -265,15 +266,17 @@ func (ckb *clickhousebatch) createTable(ctx context.Context) error {
 }
 
 func (ckb *clickhousebatch) WriteBatch(ctx context.Context, msgs service.MessageBatch) error {
+	rows := make([]map[string]any, 0, len(msgs))
+
 	for _, msg := range msgs {
 		destrcuted, err := msg.AsStructured()
 		if err != nil {
 			return err
 		}
 
-		mapping := destrcuted.(map[string]any)
+		row := destrcuted.(map[string]any)
 
-		for col := range mapping {
+		for col := range row {
 			if ckb.hasColumn(col) {
 				continue
 			}
@@ -286,10 +289,39 @@ func (ckb *clickhousebatch) WriteBatch(ctx context.Context, msgs service.Message
 				return err
 			}
 			ty := columnTypeMap[col]
-			ckb.addColumn(ctx, col, ty)
+			if err := ckb.addColumn(ctx, col, ty); err != nil {
+				return err
+			}
+		}
+
+		rows = append(rows, row)
+	}
+
+	batch, err := ckb.conn.PrepareBatch(ctx, "insert into "+ckb.table.name)
+	if err != nil {
+		return err
+	}
+
+	valLen := len(ckb.table.columns)
+	for _, row := range rows {
+		values := make([]any, 0, valLen)
+		for _, col := range ckb.table.columns {
+			value := row[col.name]
+			if value == nil {
+				value = util.PredefinedZeroValue(col.ty)
+			}
+			values = append(values, value)
+		}
+		if err := batch.Append(values...); err != nil {
+			return err
 		}
 	}
-	fmt.Println(len(msgs))
+
+	if err := batch.Send(); err != nil {
+		return err
+	}
+
+	fmt.Println("end", len(msgs))
 	return nil
 }
 
@@ -302,13 +334,13 @@ func (ckb *clickhousebatch) hasColumn(name string) bool {
 	return false
 }
 
-func (ckb *clickhousebatch) addColumn(ctx context.Context, name string, ty string) (bool, error) {
+func (ckb *clickhousebatch) addColumn(ctx context.Context, name string, ty string) error {
 	if err := ckb.conn.Exec(ctx, "alter table "+ckb.table.name+" add column if not exists `"+name+"` "+ty); err != nil {
-		return false, err
+		return err
 	}
 
 	ckb.table.columns = append(ckb.table.columns, clickhousebatchTableColumn{name: name, ty: ty})
-	return true, nil
+	return nil
 }
 
 func (ckb *clickhousebatch) Close(ctx context.Context) error {

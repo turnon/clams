@@ -86,7 +86,10 @@ func (js2cols *json2cols) Process(ctx context.Context, msg *service.Message) (se
 }
 
 func (js2cols *json2cols) destructValue(msgAsMap map[string]any, field string, keep bool) {
-	value := msgAsMap[field]
+	value, ok := msgAsMap[field]
+	if !ok {
+		return
+	}
 	if keep {
 		msgAsMap[field+"_raw"] = value
 	}

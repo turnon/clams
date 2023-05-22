@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/turnon/clams/util"
 )
 
 const (
@@ -111,6 +113,9 @@ func flattenDeepMap(nestedMap map[string]any, level int) (map[string]any, map[st
 			// flatTypes[k+"_float64"] = tyFloat64
 			flatMap[k] = realV
 			flatTypes[k] = tyFloat64
+		case json.Number:
+			flatMap[k], _ = realV.Float64()
+			flatTypes[k] = tyFloat64
 		case int64:
 			flatMap[k] = realV
 			flatTypes[k] = tyInt64
@@ -186,7 +191,7 @@ func flattenMaps(maps []map[string]any) (map[string]any, map[string]string) {
 		for k := range KeyTypes {
 			val, ok := flatMap[k]
 			if !ok {
-				val = ArrayZeroValue(KeyTypes[k])
+				val = util.PredefinedZeroValue(KeyTypes[k])
 			}
 			keyVals[k] = append(keyVals[k], val)
 		}
@@ -199,64 +204,4 @@ func flattenMaps(maps []map[string]any) (map[string]any, map[string]string) {
 
 	// 还要将any转为具体类型
 	return flattenMap(keyVal)
-}
-
-var nestedInt64Array = []any{
-	nil,
-	[]*int64{},
-	[][]*int64{},
-	[][][]*int64{},
-	[][][][]*int64{},
-	[][][][][]*int64{},
-}
-
-var nestedFloat64Array = []any{
-	nil,
-	[]*float64{},
-	[][]*float64{},
-	[][][]*float64{},
-	[][][][]*float64{},
-	[][][][][]*float64{},
-}
-
-var nestedStrArray = []any{
-	nil,
-	[]*string{},
-	[][]*string{},
-	[][][]*string{},
-	[][][][]*string{},
-	[][][][][]*string{},
-}
-
-var (
-	map_str   = map[string]string{}
-	map_int   = map[string]int64{}
-	map_float = map[string]float64{}
-)
-
-func ArrayZeroValue(typeName string) any {
-	level := strings.Count(typeName, ")") - 1
-
-	if strings.HasPrefix(typeName, "Map") {
-		if strings.HasSuffix(typeName, "String)") {
-			return map_str
-		} else if strings.HasSuffix(typeName, "Float64)") {
-			return map_float
-		} else if strings.HasSuffix(typeName, "Int64)") {
-			return map_int
-		}
-		return nil
-	}
-
-	// 为什么要两个括号“))”？
-	// 因为一层是Array(Nullable(Type))的元素，空值是null
-	if strings.HasSuffix(typeName, "Float64))") {
-		return nestedFloat64Array[level]
-	} else if strings.HasSuffix(typeName, "String))") {
-		return nestedStrArray[level]
-	} else if strings.HasSuffix(typeName, "Int64))") {
-		return nestedInt64Array[level]
-	} else {
-		return nil
-	}
 }

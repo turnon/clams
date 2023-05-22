@@ -2,6 +2,8 @@ package clickhousebatch
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -263,8 +265,50 @@ func (ckb *clickhousebatch) createTable(ctx context.Context) error {
 }
 
 func (ckb *clickhousebatch) WriteBatch(ctx context.Context, msgs service.MessageBatch) error {
+	for _, msg := range msgs {
+		destrcuted, err := msg.AsStructured()
+		if err != nil {
+			return err
+		}
+
+		mapping := destrcuted.(map[string]any)
+
+		for col := range mapping {
+			if ckb.hasColumn(col) {
+				continue
+			}
+			columnTypes, ok := msg.MetaGet("column_types")
+			if !ok {
+				return errors.New("no column_types in meta")
+			}
+			var columnTypeMap map[string]string
+			if err := json.Unmarshal([]byte(columnTypes), &columnTypeMap); err != nil {
+				return err
+			}
+			ty := columnTypeMap[col]
+			ckb.addColumn(ctx, col, ty)
+		}
+	}
 	fmt.Println(len(msgs))
 	return nil
+}
+
+func (ckb *clickhousebatch) hasColumn(name string) bool {
+	for _, col := range ckb.table.columns {
+		if col.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (ckb *clickhousebatch) addColumn(ctx context.Context, name string, ty string) (bool, error) {
+	if err := ckb.conn.Exec(ctx, "alter table "+ckb.table.name+" add column if not exists `"+name+"` "+ty); err != nil {
+		return false, err
+	}
+
+	ckb.table.columns = append(ckb.table.columns, clickhousebatchTableColumn{name: name, ty: ty})
+	return true, nil
 }
 
 func (ckb *clickhousebatch) Close(ctx context.Context) error {

@@ -67,7 +67,8 @@ func (js2cols *json2cols) Process(ctx context.Context, msg *service.Message) (se
 	}
 
 	// flatten and get types
-	attrs, types := flattenMap(msgAsMap)
+	fm := flattablemap{}
+	attrs, types := fm.flatten(msgAsMap)
 
 	// make a new message
 	attrsBytes, err := json.Marshal(attrs)

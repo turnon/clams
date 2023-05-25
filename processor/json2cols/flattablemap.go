@@ -15,19 +15,15 @@ const (
 	tyString  = "String"
 )
 
-func flattenMap(nestedMap map[string]any) (attrs map[string]any, types map[string]string) {
-	// defer func() {
-	// 	if err := recover(); err != nil {
-	// 		logger.Debugf("FlattenMap_Err: %v ==> %v", err, nestedMap)
-	// 		panic(err)
-	// 	}
-	// }()
+type flattablemap struct {
+}
 
-	attrs, types = flattenDeepMap(nestedMap, 0)
+func (fm *flattablemap) flatten(m map[string]any) (attrs map[string]any, types map[string]string) {
+	attrs, types = fm.flattenDeep(m, 0)
 	return
 }
 
-func flattenDeepMap(nestedMap map[string]any, level int) (map[string]any, map[string]string) {
+func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[string]any, map[string]string) {
 	flatMap := make(map[string]any)
 	flatTypes := make(map[string]string)
 	for k, v := range nestedMap {
@@ -48,7 +44,7 @@ func flattenDeepMap(nestedMap map[string]any, level int) (map[string]any, map[st
 			flatTypes[k] = tyFloat64
 		// 嵌套object
 		case map[string]any:
-			subMap, subTypes := flattenDeepMap(realV, level+1)
+			subMap, subTypes := fm.flattenDeep(realV, level+1)
 			for subK, subV := range subMap {
 				subTy := subTypes[subK]
 				if level == 0 {
@@ -92,10 +88,8 @@ func flattenDeepMap(nestedMap map[string]any, level int) (map[string]any, map[st
 							int64s = make([]*int64, 0, len(realV))
 						}
 						int64s = append(int64s, &i64)
-						fmt.Println(i64)
 					}
 					if isInt64 {
-						fmt.Println(int64s)
 						flatMap[k+"_int64s"] = int64s
 						flatTypes[k+"_int64s"] = "Array(Nullable(Int64))"
 						break loopvalues
@@ -161,7 +155,7 @@ func flattenDeepMap(nestedMap map[string]any, level int) (map[string]any, map[st
 			if !isMaps {
 				continue
 			}
-			flatMaps, subFlatTypes := flattenMaps(maps)
+			flatMaps, subFlatTypes := fm.flattenMaps(maps)
 			for subK, subV := range flatMaps {
 				flatMap[k+"_"+subK] = subV
 				flatTypes[k+"_"+subK] = subFlatTypes[subK]
@@ -223,12 +217,12 @@ func appendTypeToKey(key, ty string) string {
 }
 
 // 将[{a: 1, b: 2}, {a: 3, b: 4}]变成{a: [1, 3], b: [2, 4]}
-func flattenMaps(maps []map[string]any) (map[string]any, map[string]string) {
+func (fm *flattablemap) flattenMaps(maps []map[string]any) (map[string]any, map[string]string) {
 	// 先收集所有会出现的key，以防某些object的key有差异
 	KeyTypes := make(map[string]string)
 	flatMaps := make([]map[string]any, 0, len(maps))
 	for _, m := range maps {
-		flatMap, flatTypes := flattenMap(m)
+		flatMap, flatTypes := fm.flatten(m)
 		flatMaps = append(flatMaps, flatMap)
 		for k := range flatMap {
 			if _, ok := KeyTypes[k]; ok {
@@ -261,5 +255,5 @@ func flattenMaps(maps []map[string]any) (map[string]any, map[string]string) {
 	json.Unmarshal(bytes, &keyVal)
 
 	// 还要将any转为具体类型
-	return flattenMap(keyVal)
+	return fm.flatten(keyVal)
 }

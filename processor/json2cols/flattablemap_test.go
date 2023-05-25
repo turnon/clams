@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestFlattenMapInt(t *testing.T) {
+func TestFlattablemapInt(t *testing.T) {
 	flattenStrMap(t, "{\"a\":1}")
 }
 
@@ -43,6 +43,7 @@ func flattenStrMap(t *testing.T, str string) {
 	dec := json.NewDecoder(bytes.NewReader([]byte(str)))
 	dec.UseNumber()
 	dec.Decode(&m)
-	// json.Unmarshal([]byte(str), &m)
-	t.Log(flattenMap(m))
+
+	fm := flattablemap{}
+	t.Log(fm.flatten(m))
 }

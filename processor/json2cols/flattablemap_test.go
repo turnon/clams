@@ -39,11 +39,11 @@ func TestFlattenMapStringArr(t *testing.T) {
 }
 
 func TestFlattenMapObjArr(t *testing.T) {
-	flattenStrMap(t, "{\"a\": [{\"b\": 1}, {\"b\": 2, \"c\": 3.4, \"d\": true, \"e\": [5, 6]}]}")
+	flattenStrMap(t, "{\"a\": [{\"b\": 1, \"f\": {\"g\": \"h\"}}, {\"b\": 2, \"c\": 3.4, \"d\": true, \"e\": [5, 6]}]}")
 }
 
 func TestFlattenMapNested(t *testing.T) {
-	flattenStrMap(t, "{\"a\": {\"b\": 1, \"c\": 2.3, \"d\": \"d\", \"e\": [4, 5]}}")
+	flattenStrMap(t, "{\"a\": {\"b\": 1, \"c\": 2.3, \"d\": \"d\", \"e\": [4, 5], \"f\": {\"g\": \"h\"}}}")
 }
 
 func flattenStrMap(t *testing.T, str string) {

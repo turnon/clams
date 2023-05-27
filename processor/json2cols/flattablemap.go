@@ -157,8 +157,6 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 			return
 		}
 
-		delete(flatMap, k+"_int64s")
-		delete(flatTypes, k+"_int64s")
 		float64s = make([]*float64, 0, len(realV))
 		for _, eleV := range realV {
 			f64, _ := eleV.(json.Number).Float64()
@@ -198,6 +196,26 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 		for subK, subV := range flatMaps {
 			flatMap[k+"_"+subK] = subV
 			flatTypes[k+"_"+subK] = subFlatTypes[subK]
+		}
+		return
+	}
+
+	// array
+	_, matchType = realV[0].([]any)
+	if matchType {
+		_flatMap := make(map[string]any)
+		_flatTypes := make(map[string]string)
+		for _, realEleV := range realV {
+			arr := realEleV.([]any)
+			if len(arr) == 0 {
+				continue
+			}
+			fm.flattenArrayOfAny(_flatMap, _flatTypes, "", arr)
+			for _, ty := range _flatTypes {
+				flatMap[k+"_arr"] = realV
+				flatTypes[k+"_arr"] = "Array(" + ty + ")"
+				return
+			}
 		}
 		return
 	}

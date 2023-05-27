@@ -47,7 +47,7 @@ func TestFlattenMapNested(t *testing.T) {
 }
 
 func flattenStrMap(t *testing.T, str string) {
-	const format = "\n\033[32mnew: %v\n\033[33mnew: %v\n\033[34mattr: %v\n\033[35mtype: %v\n\033[0m"
+	const format = "\n\033[32mraw: %v\n\033[33mnew: %v\n\033[34mattr: %v\n\033[35mtype: %v\n\033[0m"
 
 	var m map[string]any
 	dec := json.NewDecoder(bytes.NewReader([]byte(str)))

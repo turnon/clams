@@ -189,31 +189,39 @@ func appendTypeToKey(key, ty string) string {
 	return key
 }
 
+// 键与可能的类型
+type keyTypes map[string]map[string]struct{}
+
+// 加入可能的类型
+func (keyTys keyTypes) add(k, ty string) {
+	tys, ok := keyTys[k]
+	if !ok {
+		tys = make(map[string]struct{})
+	}
+	tys[ty] = struct{}{}
+	keyTys[k] = tys
+}
+
 // 将[{a: 1, b: 2}, {a: 3, b: 4}]变成{a: [1, 3], b: [2, 4]}
 func (fm *flattablemap) flattenArrayOfMaps(maps []map[string]any) (map[string]any, map[string]string) {
 	// 先收集所有会出现的key，以防某些object的key有差异
-	KeyTypes := make(map[string]map[string]struct{})
+	keyTys := make(keyTypes)
 	flatMaps := make([]map[string]any, 0, len(maps))
 	for _, m := range maps {
 		flatMap, flatTypes := fm.flatten(m)
 		flatMaps = append(flatMaps, flatMap)
 		for k := range flatMap {
-			types, ok := KeyTypes[k]
-			if !ok {
-				types = make(map[string]struct{})
-			}
-			types[flatTypes[k]] = struct{}{}
-			KeyTypes[k] = types
+			keyTys.add(k, flatTypes[k])
 		}
 	}
 
 	// 将各个object中同key的value归类
 	keyVals := make(map[string][]any)
 	for _, flatMap := range flatMaps {
-		for k := range KeyTypes {
+		for k := range keyTys {
 			val, ok := flatMap[k]
 			if !ok {
-				val = util.PredefinedZeroValue(KeyTypes[k])
+				val = util.PredefinedZeroValue(keyTys[k])
 			}
 			keyVals[k] = append(keyVals[k], val)
 		}

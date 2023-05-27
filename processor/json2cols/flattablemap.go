@@ -111,19 +111,6 @@ func (fm *flattablemap) appendTypeToKey(key, ty string) string {
 	return key
 }
 
-// 键与可能的类型
-type keyTypes map[string]map[string]struct{}
-
-// 加入可能的类型
-func (keyTys keyTypes) add(k, ty string) {
-	tys, ok := keyTys[k]
-	if !ok {
-		tys = make(map[string]struct{})
-	}
-	tys[ty] = struct{}{}
-	keyTys[k] = tys
-}
-
 func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[string]string, k string, realV []any) {
 	if len(realV) == 0 {
 		return
@@ -248,6 +235,19 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 	// 		fmt.Println(fmt.Sprintf("reflect %v %v", k, "nil!"))
 	// 	}
 	// }
+}
+
+// 键与可能的类型
+type keyTypes map[string]map[string]struct{}
+
+// 加入可能的类型
+func (keyTys keyTypes) add(k, ty string) {
+	tys, ok := keyTys[k]
+	if !ok {
+		tys = make(map[string]struct{})
+	}
+	tys[ty] = struct{}{}
+	keyTys[k] = tys
 }
 
 // 将[{a: 1, b: 2}, {a: 3, b: 4}]变成{a: [1, 3], b: [2, 4]}

@@ -56,97 +56,7 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 			}
 		// array
 		case []any:
-			if len(realV) == 0 {
-				continue
-			}
-			var isMaps bool
-			var (
-				maps     []map[string]any
-				float64s []*float64
-				strs     []*string
-				int64s   []*int64
-				uint8s   []*uint8
-			)
-		loopvalues:
-			for _, eleV := range realV {
-				switch realEleV := eleV.(type) {
-				case string:
-					if strs == nil {
-						strs = make([]*string, 0, len(realV))
-					}
-					strs = append(strs, &realEleV)
-					flatMap[k+"_strs"] = strs
-					flatTypes[k+"_strs"] = "Array(Nullable(String))"
-				case json.Number:
-					isInt64 := true
-					for _, eleV := range realV {
-						i64, err := eleV.(json.Number).Int64()
-						if err != nil {
-							isInt64 = false
-							break
-						}
-						if int64s == nil {
-							int64s = make([]*int64, 0, len(realV))
-						}
-						int64s = append(int64s, &i64)
-					}
-					if isInt64 {
-						flatMap[k+"_int64s"] = int64s
-						flatTypes[k+"_int64s"] = "Array(Nullable(Int64))"
-						break loopvalues
-					}
-
-					delete(flatMap, k+"_int64s")
-					delete(flatTypes, k+"_int64s")
-					float64s = make([]*float64, 0, len(realV))
-					for _, eleV := range realV {
-						f64, _ := eleV.(json.Number).Float64()
-						float64s = append(float64s, &f64)
-					}
-					flatMap[k+"_float64s"] = float64s
-					flatTypes[k+"_float64s"] = "Array(Nullable(Float64))"
-				case bool:
-					if uint8s == nil {
-						uint8s = make([]*uint8, 0, len(realV))
-					}
-					var b uint8
-					if realEleV {
-						b = uint8(1)
-					} else {
-						b = uint8(0)
-					}
-					uint8s = append(uint8s, &b)
-					flatMap[k+"_uint8s"] = uint8s
-					flatTypes[k+"_uint8s"] = "Array(Nullable(UInt8))"
-				case map[string]any:
-					if maps == nil {
-						maps = make([]map[string]any, 0, len(realV))
-					}
-					maps = append(maps, realEleV)
-					isMaps = true
-				default:
-					// debug
-					// ty := reflect.TypeOf(eleV)
-					// if ty != nil {
-					// 	fmt.Println(fmt.Sprintf("reflect %v %v", k, ty))
-					// 	// flatMap[k] = v
-					// 	// flatTypes[k] = "[]default{}"
-					// } else {
-					// 	fmt.Println(fmt.Sprintf("reflect %v %v", k, "nil!"))
-					// }
-				}
-				// if !isMaps {
-				// 	break
-				// }
-			}
-			if !isMaps {
-				continue
-			}
-			flatMaps, subFlatTypes := fm.flattenArrayOfMaps(maps)
-			for subK, subV := range flatMaps {
-				flatMap[k+"_"+subK] = subV
-				flatTypes[k+"_"+subK] = subFlatTypes[subK]
-			}
+			fm.flattenArrayOfAny(flatMap, flatTypes, k, realV)
 		case bool:
 			if realV {
 				flatMap[k] = uint8(1)
@@ -200,6 +110,102 @@ func (keyTys keyTypes) add(k, ty string) {
 	}
 	tys[ty] = struct{}{}
 	keyTys[k] = tys
+}
+
+func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[string]string, k string, realV []any) {
+	if len(realV) == 0 {
+		return
+	}
+
+	var isMaps bool
+	var (
+		maps     []map[string]any
+		float64s []*float64
+		strs     []*string
+		int64s   []*int64
+		uint8s   []*uint8
+	)
+
+loopvalues:
+	for _, eleV := range realV {
+		switch realEleV := eleV.(type) {
+		case string:
+			if strs == nil {
+				strs = make([]*string, 0, len(realV))
+			}
+			strs = append(strs, &realEleV)
+			flatMap[k+"_strs"] = strs
+			flatTypes[k+"_strs"] = "Array(Nullable(String))"
+		case json.Number:
+			isInt64 := true
+			for _, eleV := range realV {
+				i64, err := eleV.(json.Number).Int64()
+				if err != nil {
+					isInt64 = false
+					break
+				}
+				if int64s == nil {
+					int64s = make([]*int64, 0, len(realV))
+				}
+				int64s = append(int64s, &i64)
+			}
+			if isInt64 {
+				flatMap[k+"_int64s"] = int64s
+				flatTypes[k+"_int64s"] = "Array(Nullable(Int64))"
+				break loopvalues
+			}
+
+			delete(flatMap, k+"_int64s")
+			delete(flatTypes, k+"_int64s")
+			float64s = make([]*float64, 0, len(realV))
+			for _, eleV := range realV {
+				f64, _ := eleV.(json.Number).Float64()
+				float64s = append(float64s, &f64)
+			}
+			flatMap[k+"_float64s"] = float64s
+			flatTypes[k+"_float64s"] = "Array(Nullable(Float64))"
+		case bool:
+			if uint8s == nil {
+				uint8s = make([]*uint8, 0, len(realV))
+			}
+			var b uint8
+			if realEleV {
+				b = uint8(1)
+			} else {
+				b = uint8(0)
+			}
+			uint8s = append(uint8s, &b)
+			flatMap[k+"_uint8s"] = uint8s
+			flatTypes[k+"_uint8s"] = "Array(Nullable(UInt8))"
+		case map[string]any:
+			if maps == nil {
+				maps = make([]map[string]any, 0, len(realV))
+			}
+			maps = append(maps, realEleV)
+			isMaps = true
+		default:
+			// debug
+			// ty := reflect.TypeOf(eleV)
+			// if ty != nil {
+			// 	fmt.Println(fmt.Sprintf("reflect %v %v", k, ty))
+			// 	// flatMap[k] = v
+			// 	// flatTypes[k] = "[]default{}"
+			// } else {
+			// 	fmt.Println(fmt.Sprintf("reflect %v %v", k, "nil!"))
+			// }
+		}
+		// if !isMaps {
+		// 	break
+		// }
+	}
+	if !isMaps {
+		return
+	}
+	flatMaps, subFlatTypes := fm.flattenArrayOfMaps(maps)
+	for subK, subV := range flatMaps {
+		flatMap[k+"_"+subK] = subV
+		flatTypes[k+"_"+subK] = subFlatTypes[subK]
+	}
 }
 
 // 将[{a: 1, b: 2}, {a: 3, b: 4}]变成{a: [1, 3], b: [2, 4]}

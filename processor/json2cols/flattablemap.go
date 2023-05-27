@@ -17,6 +17,14 @@ const (
 )
 
 type flattablemap struct {
+	suffix bool
+}
+
+func (fm *flattablemap) suffixed(sf string) string {
+	if fm.suffix {
+		return sf
+	}
+	return ""
 }
 
 func (fm *flattablemap) flatten(m map[string]any) (attrs map[string]any, types map[string]string) {
@@ -49,7 +57,7 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 			for subK, subV := range subMap {
 				subTy := subTypes[subK]
 				if level == 0 {
-					subK = appendTypeToKey(subK, subTy)
+					subK = fm.appendTypeToKey(subK, subTy)
 				}
 				flatMap[k+"_"+subK] = subV
 				flatTypes[k+"_"+subK] = subTy
@@ -83,7 +91,11 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 	return flatMap, flatTypes
 }
 
-func appendTypeToKey(key, ty string) string {
+func (fm *flattablemap) appendTypeToKey(key, ty string) string {
+	if !fm.suffix {
+		return key
+	}
+
 	if ty == tyString {
 		return key + "_str"
 	} else if ty == tyInt64 {
@@ -127,8 +139,9 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 			str := eleV.(string)
 			strs = append(strs, &str)
 		}
-		flatMap[k+"_strs"] = strs
-		flatTypes[k+"_strs"] = "Array(Nullable(String))"
+		suffix := fm.suffixed("_strs")
+		flatMap[k+suffix] = strs
+		flatTypes[k+suffix] = "Array(Nullable(String))"
 		return
 	}
 
@@ -152,8 +165,9 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 			int64s = append(int64s, &i64)
 		}
 		if isInt64 {
-			flatMap[k+"_int64s"] = int64s
-			flatTypes[k+"_int64s"] = "Array(Nullable(Int64))"
+			suffix := fm.suffixed("_int64s")
+			flatMap[k+suffix] = int64s
+			flatTypes[k+suffix] = "Array(Nullable(Int64))"
 			return
 		}
 
@@ -162,8 +176,9 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 			f64, _ := eleV.(json.Number).Float64()
 			float64s = append(float64s, &f64)
 		}
-		flatMap[k+"_float64s"] = float64s
-		flatTypes[k+"_float64s"] = "Array(Nullable(Float64))"
+		suffix := fm.suffixed("_float64s")
+		flatMap[k+suffix] = float64s
+		flatTypes[k+suffix] = "Array(Nullable(Float64))"
 		return
 	}
 
@@ -180,8 +195,9 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 			}
 			uint8s = append(uint8s, &b)
 		}
-		flatMap[k+"_uint8s"] = uint8s
-		flatTypes[k+"_uint8s"] = "Array(Nullable(UInt8))"
+		suffix := fm.suffixed("_uint8s")
+		flatMap[k+suffix] = uint8s
+		flatTypes[k+suffix] = "Array(Nullable(UInt8))"
 		return
 	}
 
@@ -212,8 +228,9 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 			}
 			fm.flattenArrayOfAny(_flatMap, _flatTypes, "", arr)
 			for _, ty := range _flatTypes {
-				flatMap[k+"_arr"] = realV
-				flatTypes[k+"_arr"] = "Array(" + ty + ")"
+				suffix := fm.suffixed("_arr")
+				flatMap[k+suffix] = realV
+				flatTypes[k+suffix] = "Array(" + ty + ")"
 				return
 			}
 		}

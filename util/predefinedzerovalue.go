@@ -1,6 +1,8 @@
 package util
 
-import "strings"
+import (
+	"strings"
+)
 
 var (
 	map_str   = map[string]string{}
@@ -35,9 +37,36 @@ var (
 	}
 )
 
-func PredefinedZeroValue(typeName string) any {
-	level := strings.Count(typeName, ")") - 1
+func PredefinedZeroValue(typeNames map[string]struct{}) any {
+	if len(typeNames) == 1 {
+		for ty := range typeNames {
+			return _predefinedZeroValue(ty)
+		}
+	}
 
+	if len(typeNames) == 2 {
+		var (
+			isInt64, isFloat64 bool
+			float64Ty          string
+		)
+		for ty := range typeNames {
+			if strings.Contains(ty, "Int64") {
+				isInt64 = true
+			}
+			if strings.Contains(ty, "Float64") {
+				isFloat64 = true
+				float64Ty = ty
+			}
+		}
+		if isInt64 && isFloat64 {
+			return _predefinedZeroValue(float64Ty)
+		}
+	}
+
+	return nil
+}
+
+func _predefinedZeroValue(typeName string) any {
 	if strings.HasPrefix(typeName, "Map") {
 		if strings.HasSuffix(typeName, "String)") {
 			return map_str
@@ -47,6 +76,19 @@ func PredefinedZeroValue(typeName string) any {
 			return map_int
 		}
 		return nil
+	}
+
+	level := strings.Count(typeName, ")") - 1
+
+	// 如果非数组
+	if level == -1 {
+		if typeName == "Float64" || typeName == "Int64" || typeName == "UInt8" {
+			return 0
+		} else if typeName == "String" {
+			return ""
+		} else {
+			return nil
+		}
 	}
 
 	// 为什么要两个括号“))”？

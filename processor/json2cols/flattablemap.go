@@ -1,6 +1,7 @@
 package json2cols
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -123,29 +124,15 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 					}
 					maps = append(maps, realEleV)
 					isMaps = true
-				// case float64:
-				// 	if float64s == nil {
-				// 		float64s = make([]*float64, 0, len(realV))
-				// 	}
-				// 	float64s = append(float64s, &realEleV)
-				// 	flatMap[k+"_float64s"] = float64s
-				// 	flatTypes[k+"_float64s"] = "Array(Nullable(Float64))"
-				// case int64:
-				// 	if int64s == nil {
-				// 		int64s = make([]*int64, 0, len(realV))
-				// 	}
-				// 	int64s = append(int64s, &realEleV)
-				// 	flatMap[k+"_int64s"] = int64s
-				// 	flatTypes[k+"_int64s"] = "Array(Nullable(Int64))"
 				default:
 					// debug
 					// ty := reflect.TypeOf(eleV)
 					// if ty != nil {
-					// 	logger.Debug(fmt.Sprintf("reflect %v %v", k, ty))
+					// 	fmt.Println(fmt.Sprintf("reflect %v %v", k, ty))
 					// 	// flatMap[k] = v
 					// 	// flatTypes[k] = "[]default{}"
 					// } else {
-					// 	logger.Debug(fmt.Sprintf("reflect %v %v", k, "nil!"))
+					// 	fmt.Println(fmt.Sprintf("reflect %v %v", k, "nil!"))
 					// }
 				}
 				// if !isMaps {
@@ -155,22 +142,11 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 			if !isMaps {
 				continue
 			}
-			flatMaps, subFlatTypes := fm.flattenMaps(maps)
+			flatMaps, subFlatTypes := fm.flattenArrayOfMaps(maps)
 			for subK, subV := range flatMaps {
 				flatMap[k+"_"+subK] = subV
 				flatTypes[k+"_"+subK] = subFlatTypes[subK]
 			}
-		// case int:
-		// 	flatMap[k] = int64(realV)
-		// 	flatTypes[k] = tyInt64
-		// case float64:
-		// 	// flatMap[k+"_float64"] = realV
-		// 	// flatTypes[k+"_float64"] = tyFloat64
-		// 	flatMap[k] = realV
-		// 	flatTypes[k] = tyFloat64
-		// case int64:
-		// 	flatMap[k] = realV
-		// 	flatTypes[k] = tyInt64
 		case bool:
 			if realV {
 				flatMap[k] = uint8(1)
@@ -178,9 +154,6 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 				flatMap[k] = uint8(0)
 			}
 			flatTypes[k] = tyBool
-		// case []string:
-		// 	flatMap[k+"_strs"] = realV
-		// 	flatTypes[k+"_strs"] = "Array(Nullable(String111))"
 		// 未定
 		default:
 			// debug
@@ -217,23 +190,20 @@ func appendTypeToKey(key, ty string) string {
 }
 
 // 将[{a: 1, b: 2}, {a: 3, b: 4}]变成{a: [1, 3], b: [2, 4]}
-func (fm *flattablemap) flattenMaps(maps []map[string]any) (map[string]any, map[string]string) {
+func (fm *flattablemap) flattenArrayOfMaps(maps []map[string]any) (map[string]any, map[string]string) {
 	// 先收集所有会出现的key，以防某些object的key有差异
-	KeyTypes := make(map[string]string)
+	KeyTypes := make(map[string]map[string]struct{})
 	flatMaps := make([]map[string]any, 0, len(maps))
 	for _, m := range maps {
 		flatMap, flatTypes := fm.flatten(m)
 		flatMaps = append(flatMaps, flatMap)
 		for k := range flatMap {
-			if _, ok := KeyTypes[k]; ok {
-				continue
+			types, ok := KeyTypes[k]
+			if !ok {
+				types = make(map[string]struct{})
 			}
-			ty := flatTypes[k]
-			if strings.HasSuffix(ty, ")") {
-				KeyTypes[k] = "Array(" + flatTypes[k] + ")"
-			} else {
-				KeyTypes[k] = "Array(Nullable(" + flatTypes[k] + "))"
-			}
+			types[flatTypes[k]] = struct{}{}
+			KeyTypes[k] = types
 		}
 	}
 
@@ -250,10 +220,13 @@ func (fm *flattablemap) flattenMaps(maps []map[string]any) (map[string]any, map[
 	}
 
 	// 将[]any转成any
-	bytes, _ := json.Marshal(keyVals)
+	bytesArr, _ := json.Marshal(keyVals)
 	keyVal := make(map[string]any)
-	json.Unmarshal(bytes, &keyVal)
+	dec := json.NewDecoder(bytes.NewReader(bytesArr))
+	dec.UseNumber()
+	dec.Decode(&keyVal)
 
 	// 还要将any转为具体类型
-	return fm.flatten(keyVal)
+	a, b := fm.flatten(keyVal)
+	return a, b
 }

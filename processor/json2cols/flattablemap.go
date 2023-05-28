@@ -33,45 +33,45 @@ func (fm *flattablemap) flatten(m map[string]any) (attrs map[string]any, types m
 }
 
 func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[string]any, map[string]string) {
-	flatMap := make(map[string]any)
-	flatTypes := make(map[string]string)
+	valuesMap := make(map[string]any)
+	typesMap := make(map[string]string)
 	for k, v := range nestedMap {
 		switch realV := v.(type) {
 		// 字符串
 		case string:
-			flatMap[k] = v
-			flatTypes[k] = tyString
+			valuesMap[k] = v
+			typesMap[k] = tyString
 		case json.Number:
 			v, err := realV.Int64()
 			if err == nil {
-				flatMap[k] = v
-				flatTypes[k] = tyInt64
+				valuesMap[k] = v
+				typesMap[k] = tyInt64
 				continue
 			}
 
-			flatMap[k], _ = realV.Float64()
-			flatTypes[k] = tyFloat64
+			valuesMap[k], _ = realV.Float64()
+			typesMap[k] = tyFloat64
 		// 嵌套object
 		case map[string]any:
-			subMap, subTypes := fm.flattenDeep(realV, level+1)
-			for subK, subV := range subMap {
-				subTy := subTypes[subK]
+			subValuesMap, subTypesMap := fm.flattenDeep(realV, level+1)
+			for subK, subV := range subValuesMap {
+				subTy := subTypesMap[subK]
 				if level == 0 {
-					subK = fm.appendTypeToKey(subK, subTy)
+					subK = fm.suffixTypeOnKey(subK, subTy)
 				}
-				flatMap[k+"_"+subK] = subV
-				flatTypes[k+"_"+subK] = subTy
+				valuesMap[k+"_"+subK] = subV
+				typesMap[k+"_"+subK] = subTy
 			}
 		// array
 		case []any:
-			fm.flattenArrayOfAny(flatMap, flatTypes, k, realV)
+			fm.flattenArrayOfAny(valuesMap, typesMap, k, realV)
 		case bool:
 			if realV {
-				flatMap[k] = uint8(1)
+				valuesMap[k] = uint8(1)
 			} else {
-				flatMap[k] = uint8(0)
+				valuesMap[k] = uint8(0)
 			}
-			flatTypes[k] = tyBool
+			typesMap[k] = tyBool
 		// 未定
 		default:
 			// debug
@@ -82,16 +82,16 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 			// 	fmt.Println(k, "nil!")
 			// }
 			if fmt.Sprintf("%v", v) != "<nil>" {
-				flatMap[k] = v
-				flatTypes[k] = "unknown_type" + fmt.Sprintf("%v", v)
+				valuesMap[k] = v
+				typesMap[k] = "unknown_type" + fmt.Sprintf("%v", v)
 			}
 		}
 	}
 	// fmt.Println(flatMap, flatTypes)
-	return flatMap, flatTypes
+	return valuesMap, typesMap
 }
 
-func (fm *flattablemap) appendTypeToKey(key, ty string) string {
+func (fm *flattablemap) suffixTypeOnKey(key, ty string) string {
 	if !fm.suffix {
 		return key
 	}
@@ -111,71 +111,71 @@ func (fm *flattablemap) appendTypeToKey(key, ty string) string {
 	return key
 }
 
-func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[string]string, k string, realV []any) {
-	if len(realV) == 0 {
+func (fm *flattablemap) flattenArrayOfAny(valuesMap map[string]any, typesMap map[string]string, k string, arrayOfAny []any) {
+	if len(arrayOfAny) == 0 {
 		return
 	}
 
 	var matchType bool
 
 	// string
-	_, matchType = realV[0].(string)
+	_, matchType = arrayOfAny[0].(string)
 	if matchType {
-		strs := make([]*string, 0, len(realV))
-		for _, eleV := range realV {
-			str := eleV.(string)
+		strs := make([]*string, 0, len(arrayOfAny))
+		for _, element := range arrayOfAny {
+			str := element.(string)
 			strs = append(strs, &str)
 		}
 		suffix := fm.suffixed("_strs")
-		flatMap[k+suffix] = strs
-		flatTypes[k+suffix] = "Array(Nullable(String))"
+		valuesMap[k+suffix] = strs
+		typesMap[k+suffix] = "Array(Nullable(String))"
 		return
 	}
 
 	// json.Number
-	_, matchType = realV[0].(json.Number)
+	_, matchType = arrayOfAny[0].(json.Number)
 	if matchType {
 		var (
 			float64s []*float64
 			int64s   []*int64
 		)
 		isInt64 := true
-		for _, eleV := range realV {
-			i64, err := eleV.(json.Number).Int64()
+		for _, element := range arrayOfAny {
+			i64, err := element.(json.Number).Int64()
 			if err != nil {
 				isInt64 = false
 				break
 			}
 			if int64s == nil {
-				int64s = make([]*int64, 0, len(realV))
+				int64s = make([]*int64, 0, len(arrayOfAny))
 			}
 			int64s = append(int64s, &i64)
 		}
 		if isInt64 {
 			suffix := fm.suffixed("_int64s")
-			flatMap[k+suffix] = int64s
-			flatTypes[k+suffix] = "Array(Nullable(Int64))"
+			valuesMap[k+suffix] = int64s
+			typesMap[k+suffix] = "Array(Nullable(Int64))"
 			return
 		}
 
-		float64s = make([]*float64, 0, len(realV))
-		for _, eleV := range realV {
-			f64, _ := eleV.(json.Number).Float64()
+		float64s = make([]*float64, 0, len(arrayOfAny))
+		for _, element := range arrayOfAny {
+			f64, _ := element.(json.Number).Float64()
 			float64s = append(float64s, &f64)
 		}
 		suffix := fm.suffixed("_float64s")
-		flatMap[k+suffix] = float64s
-		flatTypes[k+suffix] = "Array(Nullable(Float64))"
+		valuesMap[k+suffix] = float64s
+		typesMap[k+suffix] = "Array(Nullable(Float64))"
 		return
 	}
 
 	// bool
-	_, matchType = realV[0].(bool)
+	_, matchType = arrayOfAny[0].(bool)
 	if matchType {
-		uint8s := make([]*uint8, 0, len(realV))
+		uint8s := make([]*uint8, 0, len(arrayOfAny))
 		var b uint8
-		for _, realEleV := range realV {
-			if realEleV.(bool) {
+		for _, element := range arrayOfAny {
+			if element.(bool) {
 				b = uint8(1)
 			} else {
 				b = uint8(0)
@@ -183,41 +183,41 @@ func (fm *flattablemap) flattenArrayOfAny(flatMap map[string]any, flatTypes map[
 			uint8s = append(uint8s, &b)
 		}
 		suffix := fm.suffixed("_uint8s")
-		flatMap[k+suffix] = uint8s
-		flatTypes[k+suffix] = "Array(Nullable(UInt8))"
+		valuesMap[k+suffix] = uint8s
+		typesMap[k+suffix] = "Array(Nullable(UInt8))"
 		return
 	}
 
 	// map
-	_, matchType = realV[0].(map[string]any)
+	_, matchType = arrayOfAny[0].(map[string]any)
 	if matchType {
-		maps := make([]map[string]any, 0, len(realV))
-		for _, realEleV := range realV {
-			maps = append(maps, realEleV.(map[string]any))
+		maps := make([]map[string]any, 0, len(arrayOfAny))
+		for _, element := range arrayOfAny {
+			maps = append(maps, element.(map[string]any))
 		}
 		flatMaps, subFlatTypes := fm.flattenArrayOfMaps(maps)
 		for subK, subV := range flatMaps {
-			flatMap[k+"_"+subK] = subV
-			flatTypes[k+"_"+subK] = subFlatTypes[subK]
+			valuesMap[k+"_"+subK] = subV
+			typesMap[k+"_"+subK] = subFlatTypes[subK]
 		}
 		return
 	}
 
 	// array
-	_, matchType = realV[0].([]any)
+	_, matchType = arrayOfAny[0].([]any)
 	if matchType {
 		_flatMap := make(map[string]any)
 		_flatTypes := make(map[string]string)
-		for _, realEleV := range realV {
-			arr := realEleV.([]any)
+		for _, element := range arrayOfAny {
+			arr := element.([]any)
 			if len(arr) == 0 {
 				continue
 			}
 			fm.flattenArrayOfAny(_flatMap, _flatTypes, "", arr)
 			for _, ty := range _flatTypes {
 				suffix := fm.suffixed("_arr")
-				flatMap[k+suffix] = realV
-				flatTypes[k+suffix] = "Array(" + ty + ")"
+				valuesMap[k+suffix] = arrayOfAny
+				typesMap[k+suffix] = "Array(" + ty + ")"
 				return
 			}
 		}
@@ -251,25 +251,25 @@ func (keyTys keyTypes) add(k, ty string) {
 }
 
 // 将[{a: 1, b: 2}, {a: 3, b: 4}]变成{a: [1, 3], b: [2, 4]}
-func (fm *flattablemap) flattenArrayOfMaps(maps []map[string]any) (map[string]any, map[string]string) {
+func (fm *flattablemap) flattenArrayOfMaps(arrayOfMap []map[string]any) (map[string]any, map[string]string) {
 	// 先收集所有会出现的key，以防某些object的key有差异
-	keyTys := make(keyTypes)
-	flatMaps := make([]map[string]any, 0, len(maps))
-	for _, m := range maps {
-		flatMap, flatTypes := fm.flatten(m)
-		flatMaps = append(flatMaps, flatMap)
-		for k := range flatMap {
-			keyTys.add(k, flatTypes[k])
+	keyAndPossibleTypes := make(keyTypes)
+	valuesMaps := make([]map[string]any, 0, len(arrayOfMap))
+	for _, m := range arrayOfMap {
+		subValuesMap, subTypesMap := fm.flatten(m)
+		valuesMaps = append(valuesMaps, subValuesMap)
+		for k := range subValuesMap {
+			keyAndPossibleTypes.add(k, subTypesMap[k])
 		}
 	}
 
 	// 将各个object中同key的value归类
 	keyVals := make(map[string][]any)
-	for _, flatMap := range flatMaps {
-		for k := range keyTys {
+	for _, flatMap := range valuesMaps {
+		for k := range keyAndPossibleTypes {
 			val, ok := flatMap[k]
 			if !ok {
-				val = util.PredefinedZeroValue(keyTys[k])
+				val = util.PredefinedZeroValueForTypes(keyAndPossibleTypes[k])
 			}
 			keyVals[k] = append(keyVals[k], val)
 		}
@@ -283,6 +283,5 @@ func (fm *flattablemap) flattenArrayOfMaps(maps []map[string]any) (map[string]an
 	dec.Decode(&keyVal)
 
 	// 还要将any转为具体类型
-	a, b := fm.flatten(keyVal)
-	return a, b
+	return fm.flatten(keyVal)
 }

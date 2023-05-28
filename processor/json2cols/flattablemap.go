@@ -238,38 +238,38 @@ func (fm *flattablemap) flattenArrayOfAny(valuesMap map[string]any, typesMap map
 }
 
 // 键与可能的类型
-type keyTypes map[string]map[string]struct{}
+type keyAndPossibleTypes map[string]util.PossibleTypes
 
 // 加入可能的类型
-func (keyTys keyTypes) add(k, ty string) {
-	tys, ok := keyTys[k]
+func (keyAndPosTys keyAndPossibleTypes) add(k, ty string) {
+	tys, ok := keyAndPosTys[k]
 	if !ok {
-		tys = make(map[string]struct{})
+		tys = make(util.PossibleTypes)
 	}
 	tys[ty] = struct{}{}
-	keyTys[k] = tys
+	keyAndPosTys[k] = tys
 }
 
 // 将[{a: 1, b: 2}, {a: 3, b: 4}]变成{a: [1, 3], b: [2, 4]}
 func (fm *flattablemap) flattenArrayOfMaps(arrayOfMap []map[string]any) (map[string]any, map[string]string) {
 	// 先收集所有会出现的key，以防某些object的key有差异
-	keyAndPossibleTypes := make(keyTypes)
+	keyAndPosTys := make(keyAndPossibleTypes)
 	valuesMaps := make([]map[string]any, 0, len(arrayOfMap))
 	for _, m := range arrayOfMap {
 		subValuesMap, subTypesMap := fm.flatten(m)
 		valuesMaps = append(valuesMaps, subValuesMap)
 		for k := range subValuesMap {
-			keyAndPossibleTypes.add(k, subTypesMap[k])
+			keyAndPosTys.add(k, subTypesMap[k])
 		}
 	}
 
 	// 将各个object中同key的value归类
 	keyVals := make(map[string][]any)
 	for _, flatMap := range valuesMaps {
-		for k := range keyAndPossibleTypes {
+		for k := range keyAndPosTys {
 			val, ok := flatMap[k]
 			if !ok {
-				val = util.PredefinedZeroValueForTypes(keyAndPossibleTypes[k])
+				val = keyAndPosTys[k].PredefinedZeroValue()
 			}
 			keyVals[k] = append(keyVals[k], val)
 		}

@@ -37,19 +37,28 @@ var (
 	}
 )
 
-func PredefinedZeroValue(typeNames map[string]struct{}) any {
-	if len(typeNames) == 1 {
-		for ty := range typeNames {
-			return _predefinedZeroValue(ty)
+// 可能的类型列表
+type PossibleTypes map[string]struct{}
+
+// 从可能的类型列表中推断出零值
+func (posTys PossibleTypes) PredefinedZeroValue() any {
+	return PredefinedZeroValue(posTys.possibleType())
+}
+
+// 从可能的类型列表中推断出一种类型
+func (posTys PossibleTypes) possibleType() string {
+	if len(posTys) == 1 {
+		for ty := range posTys {
+			return ty
 		}
 	}
 
-	if len(typeNames) == 2 {
+	if len(posTys) == 2 {
 		var (
 			isInt64, isFloat64 bool
 			float64Ty          string
 		)
-		for ty := range typeNames {
+		for ty := range posTys {
 			if strings.Contains(ty, "Int64") {
 				isInt64 = true
 			}
@@ -59,14 +68,14 @@ func PredefinedZeroValue(typeNames map[string]struct{}) any {
 			}
 		}
 		if isInt64 && isFloat64 {
-			return _predefinedZeroValue(float64Ty)
+			return float64Ty
 		}
 	}
 
-	return nil
+	return ""
 }
 
-func _predefinedZeroValue(typeName string) any {
+func PredefinedZeroValue(typeName string) any {
 	if strings.HasPrefix(typeName, "Map") {
 		if strings.HasSuffix(typeName, "String)") {
 			return map_str

@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -154,6 +154,7 @@ type clickhousebatch struct {
 	connect clickhousebatchConnect
 	table   clickhousebatchTable
 	conn    driver.Conn
+	lock    sync.Mutex
 }
 
 type clickhousebatchConnect struct {
@@ -266,15 +267,18 @@ func (ckb *clickhousebatch) createTable(ctx context.Context) error {
 }
 
 func (ckb *clickhousebatch) WriteBatch(ctx context.Context, msgs service.MessageBatch) error {
+	ckb.lock.Lock()
+	defer func() {
+		ckb.lock.Unlock()
+	}()
+
 	rows := make([]map[string]any, 0, len(msgs))
 
 	for _, msg := range msgs {
-		destrcuted, err := msg.AsStructured()
+		row, err := ckb.msgToRow(msg)
 		if err != nil {
 			return err
 		}
-
-		row := destrcuted.(map[string]any)
 
 		for col := range row {
 			if ckb.hasColumn(col) {
@@ -297,7 +301,7 @@ func (ckb *clickhousebatch) WriteBatch(ctx context.Context, msgs service.Message
 		rows = append(rows, row)
 	}
 
-	batch, err := ckb.conn.PrepareBatch(ctx, "insert into "+ckb.table.name)
+	batch, err := ckb.conn.PrepareBatch(ctx, ckb.insertClause())
 	if err != nil {
 		return err
 	}
@@ -321,8 +325,23 @@ func (ckb *clickhousebatch) WriteBatch(ctx context.Context, msgs service.Message
 		return err
 	}
 
-	fmt.Println("end", len(msgs))
+	// fmt.Println("end", len(msgs))
 	return nil
+}
+
+func (ckb *clickhousebatch) msgToRow(msg *service.Message) (map[string]any, error) {
+	bytesArr, err := msg.AsBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	var row map[string]any
+	err = json.Unmarshal(bytesArr, &row)
+	if err != nil {
+		return nil, err
+	}
+
+	return row, nil
 }
 
 func (ckb *clickhousebatch) hasColumn(name string) bool {
@@ -341,6 +360,22 @@ func (ckb *clickhousebatch) addColumn(ctx context.Context, name string, ty strin
 
 	ckb.table.columns = append(ckb.table.columns, clickhousebatchTableColumn{name: name, ty: ty})
 	return nil
+}
+
+func (ckb *clickhousebatch) insertClause() string {
+	sb := strings.Builder{}
+	sb.WriteString("insert into ")
+	sb.WriteString(ckb.table.name)
+	sb.WriteString(" (")
+	colWithoutComma := len(ckb.table.columns) - 1
+	for i, c := range ckb.table.columns {
+		sb.WriteString(c.name)
+		if i < colWithoutComma {
+			sb.WriteString(", ")
+		}
+	}
+	sb.WriteString(")")
+	return sb.String()
 }
 
 func (ckb *clickhousebatch) Close(ctx context.Context) error {

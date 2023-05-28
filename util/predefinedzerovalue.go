@@ -91,8 +91,12 @@ func PredefinedZeroValue(typeName string) any {
 
 	// 如果非数组
 	if level == -1 {
-		if typeName == "Float64" || typeName == "Int64" || typeName == "UInt8" {
-			return 0
+		if typeName == "Float64" {
+			return float64(0)
+		} else if typeName == "Int64" {
+			return int64(0)
+		} else if typeName == "UInt8" {
+			return uint8(0)
 		} else if typeName == "String" {
 			return ""
 		} else {

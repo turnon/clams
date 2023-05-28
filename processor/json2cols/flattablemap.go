@@ -3,7 +3,6 @@ package json2cols
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/turnon/clams/util"
@@ -41,6 +40,12 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 		case string:
 			valuesMap[k] = v
 			typesMap[k] = tyString
+		case int, int8, int16, int32, int64:
+			valuesMap[k] = realV
+			typesMap[k] = tyInt64
+		case float32, float64:
+			valuesMap[k] = realV
+			typesMap[k] = tyFloat64
 		case json.Number:
 			v, err := realV.Int64()
 			if err == nil {
@@ -67,24 +72,24 @@ func (fm *flattablemap) flattenDeep(nestedMap map[string]any, level int) (map[st
 			fm.flattenArrayOfAny(valuesMap, typesMap, k, realV)
 		case bool:
 			if realV {
-				valuesMap[k] = uint8(1)
+				valuesMap[k] = float64(1)
 			} else {
-				valuesMap[k] = uint8(0)
+				valuesMap[k] = float64(0)
 			}
-			typesMap[k] = tyBool
+			typesMap[k] = tyFloat64
 		// 未定
 		default:
 			// debug
 			// ty := reflect.TypeOf(v)
 			// if ty != nil {
-			// 	fmt.Println(k, ty)
+			// 	fmt.Println(k, ty, v)
 			// } else {
-			// 	fmt.Println(k, "nil!")
+			// 	fmt.Println(k, "nil!", v)
 			// }
-			if fmt.Sprintf("%v", v) != "<nil>" {
-				valuesMap[k] = v
-				typesMap[k] = "unknown_type" + fmt.Sprintf("%v", v)
-			}
+			// if fmt.Sprintf("%v", v) != "<nil>" {
+			// 	valuesMap[k] = v
+			// 	typesMap[k] = "unknown_type" + fmt.Sprintf("%v", v)
+			// }
 		}
 	}
 	// fmt.Println(flatMap, flatTypes)
@@ -172,19 +177,19 @@ func (fm *flattablemap) flattenArrayOfAny(valuesMap map[string]any, typesMap map
 	// bool
 	_, matchType = arrayOfAny[0].(bool)
 	if matchType {
-		uint8s := make([]*uint8, 0, len(arrayOfAny))
-		var b uint8
+		bools := make([]*float64, 0, len(arrayOfAny))
+		var b float64
 		for _, element := range arrayOfAny {
 			if element.(bool) {
-				b = uint8(1)
+				b = float64(1)
 			} else {
-				b = uint8(0)
+				b = float64(0)
 			}
-			uint8s = append(uint8s, &b)
+			bools = append(bools, &b)
 		}
-		suffix := fm.suffixed("_uint8s")
-		valuesMap[k+suffix] = uint8s
-		typesMap[k+suffix] = "Array(Nullable(UInt8))"
+		suffix := fm.suffixed("_float64s")
+		valuesMap[k+suffix] = bools
+		typesMap[k+suffix] = "Array(Nullable(Float64))"
 		return
 	}
 

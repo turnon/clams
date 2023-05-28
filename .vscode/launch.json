@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}",
-            "args": ["-c", "./config.yml"]
+            "args": ["-c", "./_config.yml"]
         }
     ]
 }

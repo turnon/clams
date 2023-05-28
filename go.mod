@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.10.0
 	github.com/aliyun/aliyun-tablestore-go-sdk v1.7.7
-	github.com/benthosdev/benthos/v4 v4.15.0
+	github.com/benthosdev/benthos/v4 v4.16.0
 	github.com/rs/xid v1.5.0
 )
 
@@ -45,12 +45,13 @@ require (
 	github.com/jhump/protoreflect v1.14.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/klauspost/compress v1.16.3 // indirect
+	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/linkedin/goavro/v2 v2.12.0 // indirect
 	github.com/matoous/go-nanoid/v2 v2.0.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
-	github.com/microcosm-cc/bluemonday v1.0.22 // indirect
+	github.com/microcosm-cc/bluemonday v1.0.23 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/montanaflynn/stats v0.0.0-20171201202039-1bf9dbcd8cbe // indirect
 	github.com/mpvl/unique v0.0.0-20150818121801-cbe035fff7de // indirect
@@ -93,7 +94,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/protobuf v1.29.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	zvelo.io/ttlru v1.0.10 // indirect

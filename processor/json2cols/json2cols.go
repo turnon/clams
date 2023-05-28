@@ -55,19 +55,19 @@ type jsonField2col struct {
 }
 
 func (js2cols *json2cols) Process(ctx context.Context, msg *service.Message) (service.MessageBatch, error) {
-	structed, err := msg.AsStructured()
+	msgAsMap, err := js2cols.msgToMap(msg)
 	if err != nil {
 		return nil, err
 	}
 
 	// try to destruct those values to map or slice
-	msgAsMap := structed.(map[string]any)
 	for _, fieldToChange := range js2cols.fields {
 		js2cols.destructValue(msgAsMap, fieldToChange.name, fieldToChange.keep)
 	}
 
 	// flatten and get types
-	attrs, types := flattenMap(msgAsMap)
+	fm := flattablemap{suffix: true}
+	attrs, types := fm.flatten(msgAsMap)
 
 	// make a new message
 	attrsBytes, err := json.Marshal(attrs)
@@ -85,8 +85,26 @@ func (js2cols *json2cols) Process(ctx context.Context, msg *service.Message) (se
 	return []*service.Message{newMsg}, nil
 }
 
+func (js2cols *json2cols) msgToMap(msg *service.Message) (map[string]any, error) {
+	bytesArr, err := msg.AsBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	var msgAsMap map[string]any
+	err = json.Unmarshal(bytesArr, &msgAsMap)
+	if err != nil {
+		return nil, err
+	}
+
+	return msgAsMap, nil
+}
+
 func (js2cols *json2cols) destructValue(msgAsMap map[string]any, field string, keep bool) {
-	value := msgAsMap[field]
+	value, ok := msgAsMap[field]
+	if !ok {
+		return
+	}
 	if keep {
 		msgAsMap[field+"_raw"] = value
 	}

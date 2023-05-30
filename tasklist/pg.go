@@ -169,5 +169,12 @@ func (t *pgTask) Description() string {
 
 // Done 标记任务结束
 func (t *pgTask) Done(ctx context.Context) error {
-	return nil
+	_, err := t.list.conn.Exec(t.list.ctx, "update tasks set finished_at = $1 where id = $2", time.Now(), t.id)
+	return err
+}
+
+// Done 标记任务错误
+func (t *pgTask) Error(ctx context.Context, err error) error {
+	_, updateErr := t.list.conn.Exec(t.list.ctx, "update tasks set finished_at = $1,  error = $2 where id = $3", time.Now(), err.Error(), t.id)
+	return updateErr
 }

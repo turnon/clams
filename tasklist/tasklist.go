@@ -16,6 +16,7 @@ type RawTask struct {
 type task interface {
 	Description() string
 	Done(context.Context) error
+	Error(context.Context, error) error
 }
 
 func NewTaskList(ctx context.Context, cfg map[string]any) (Tasklist, error) {

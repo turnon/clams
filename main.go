@@ -10,6 +10,7 @@ import (
 
 	_ "github.com/benthosdev/benthos/v4/public/components/io"
 	_ "github.com/benthosdev/benthos/v4/public/components/pure"
+	"github.com/benthosdev/benthos/v4/public/service"
 	_ "github.com/benthosdev/benthos/v4/public/service"
 
 	"github.com/turnon/clams/api"
@@ -67,11 +68,30 @@ func backgroundRun(ctx context.Context, tasks tasklist.Tasklist) chan struct{} {
 				fmt.Println("dead")
 				return
 			case task := <-tasks.Read():
-				fmt.Println(task.Description())
-				task.Done(ctx)
+				if err := runTask(ctx, task.Description()); err != nil {
+					task.Error(ctx, err)
+				} else {
+					task.Done(ctx)
+				}
 			}
 		}
 	}()
 
 	return ch
+}
+
+func runTask(ctx context.Context, str string) error {
+	builder := service.NewStreamBuilder()
+
+	err := builder.SetYAML(str)
+	if err != nil {
+		return err
+	}
+
+	stream, err := builder.Build()
+	if err != nil {
+		return err
+	}
+
+	return stream.Run(ctx)
 }

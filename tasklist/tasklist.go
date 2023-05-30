@@ -9,6 +9,8 @@ type Tasklist interface {
 }
 
 type RawTask struct {
+	Description string
+	ScheduledAt string
 }
 
 type task interface {

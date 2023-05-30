@@ -11,8 +11,7 @@ import (
 
 // initPgTasklist 初始化pgTaskList
 func initPgTasklist(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
-	// url := cfg["url"].(string)
-	url := "postgresql://root:mysecretpassword@localhost:5432/clams"
+	url := cfg["url"].(string)
 	conn, err := pgxpool.New(ctx, url)
 	if err != nil {
 		return nil, err

@@ -9,6 +9,7 @@ require (
 	github.com/gin-gonic/gin v1.9.0
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/rs/xid v1.5.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -117,6 +118,5 @@ require (
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
 	google.golang.org/protobuf v1.29.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	zvelo.io/ttlru v1.0.10 // indirect
 )

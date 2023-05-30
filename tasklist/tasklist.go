@@ -1,6 +1,9 @@
 package tasklist
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 type Tasklist interface {
 	Read() chan task
@@ -23,5 +26,5 @@ func NewTaskList(ctx context.Context, cfg map[string]any) (Tasklist, error) {
 	if cfg["type"] == "pg" {
 		return initPgTasklist(ctx, cfg)
 	}
-	return nil, nil
+	return nil, errors.New("no tasklist config")
 }

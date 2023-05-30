@@ -25,13 +25,7 @@ func initPgTasklist(ctx context.Context, cfg map[string]any) (*pgTaskList, error
 		return nil, err
 	}
 
-	go func() {
-		for {
-			t := &pgTask{description: "123"}
-			list.tasks <- t
-			<-time.After(2 * time.Second)
-		}
-	}()
+	go list.loopFetch()
 
 	return &list, nil
 }
@@ -86,19 +80,52 @@ func (list *pgTaskList) Write(ctx context.Context, rawTask RawTask) error {
 	return nil
 }
 
-// // Fetch 从pg读出一个任务
-// func (list *pgTaskList) fetch() chan task {
-// 	for {
-// 		select{
-// 			case: list.ctx.
-// 		}
-// 	}
-// 	return list
-// }
+// loopFetch 从pg轮询任务
+func (list *pgTaskList) loopFetch() {
+	for {
+		select {
+		case <-list.ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+
+		oneTask, err := list.fetchOne()
+		if err != nil {
+			continue
+		}
+
+		select {
+		case <-list.ctx.Done():
+			return
+		case list.tasks <- oneTask:
+		}
+	}
+}
+
+// fetchOne 从pg读出一个任务
+func (list *pgTaskList) fetchOne() (task, error) {
+	t := &pgTask{list: list}
+
+	sql := `
+	select id, description
+	from tasks
+	where performed_at is null
+	and finished_at is null
+	order by scheduled_at
+	limit 1`
+
+	err := list.conn.QueryRow(context.Background(), sql).Scan(&t.id, &t.description)
+	if err != nil {
+		return nil, err
+	}
+
+	return t, nil
+}
 
 // pgTask 代表一个任务
 type pgTask struct {
 	list        *pgTaskList
+	id          int
 	description string
 }
 

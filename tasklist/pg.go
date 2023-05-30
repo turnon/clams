@@ -2,16 +2,18 @@ package tasklist
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // initPgTasklist 初始化pgTaskList
 func initPgTasklist(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 	// url := cfg["url"].(string)
 	url := "postgresql://root:mysecretpassword@localhost:5432/clams"
-	conn, err := pgx.Connect(ctx, url)
+	conn, err := pgxpool.New(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +35,7 @@ func initPgTasklist(ctx context.Context, cfg map[string]any) (*pgTaskList, error
 // pgTaskList 可从pg读写任务
 type pgTaskList struct {
 	ctx   context.Context
-	conn  *pgx.Conn
+	conn  *pgxpool.Pool
 	tasks chan task
 }
 
@@ -57,7 +59,8 @@ func (list *pgTaskList) init(ctx context.Context) error {
 
 // Close 断开pg任务列表
 func (list *pgTaskList) Close(ctx context.Context) error {
-	return list.conn.Close(ctx)
+	list.conn.Close()
+	return nil
 }
 
 // Read 从pg读出一个任务
@@ -90,6 +93,9 @@ func (list *pgTaskList) loopFetch() {
 		}
 
 		oneTask, err := list.fetchOne()
+		if errors.Is(err, pgx.ErrNoRows) || oneTask == nil {
+			continue
+		}
 		if err != nil {
 			continue
 		}
@@ -114,9 +120,36 @@ func (list *pgTaskList) fetchOne() (task, error) {
 	order by scheduled_at
 	limit 1`
 
-	err := list.conn.QueryRow(context.Background(), sql).Scan(&t.id, &t.description)
+	err := list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
+		return c.QueryRow(list.ctx, sql).Scan(&t.id, &t.description)
+	})
 	if err != nil {
 		return nil, err
+	}
+
+	// lock
+	var lockable bool
+	err = list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
+		return c.QueryRow(list.ctx, "select pg_try_advisory_lock($1)", t.id).Scan(&lockable)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !lockable {
+		return nil, nil
+	}
+	defer list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
+		c.QueryRow(list.ctx, "select pg_advisory_unlock($1)", t.id)
+		return nil
+	})
+
+	// mark performing
+	res, err := list.conn.Exec(list.ctx, "update tasks set performed_at = $1 where id = $2 and performed_at is null", time.Now(), t.id)
+	if err != nil {
+		return nil, err
+	}
+	if res.RowsAffected() != 1 {
+		return nil, nil
 	}
 
 	return t, nil

@@ -16,7 +16,7 @@ import (
 	_ "github.com/turnon/clams/input"
 	_ "github.com/turnon/clams/output"
 	_ "github.com/turnon/clams/processor"
-	"github.com/turnon/clams/task"
+	"github.com/turnon/clams/tasklist"
 )
 
 func main() {
@@ -29,6 +29,11 @@ func main() {
 func runUntilKilled() chan struct{} {
 	ch := make(chan struct{})
 	sigCtx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	tasks, err := tasklist.NewTaskList(sigCtx, map[string]any{"type": "pg"})
+	if err != nil {
+		close(ch)
+		return ch
+	}
 
 	go func() {
 		defer close(ch)
@@ -36,37 +41,20 @@ func runUntilKilled() chan struct{} {
 		for {
 			select {
 			case <-sigCtx.Done():
-				<-time.After(5 * time.Second)
+				closeCtx, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
+				err := tasks.Close(closeCtx)
+				if err != nil {
+					fmt.Println(err)
+				}
+				cancelClose()
 				fmt.Println("dead")
 				return
-			default:
-				fetchJob(sigCtx)
+			case task := <-tasks.Read():
+				fmt.Println(task.Description())
+				task.Done(sigCtx)
 			}
 		}
 	}()
 
 	return ch
-}
-
-func fetchJob(ctx context.Context) {
-	t := task.New()
-	taskDescription, err := t.Load(ctx)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	if taskDescription == "" {
-		<-time.After(5 * time.Second)
-		return
-	}
-
-	fmt.Println(taskDescription)
-
-	err = t.Done(ctx)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	fmt.Println(time.Now())
 }

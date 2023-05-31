@@ -5,14 +5,14 @@ services:
     image: postgres:14.1
     restart: always
     environment:
-      POSTGRES_DB: postgres_db
+      POSTGRES_DB: clams
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: secret
       PGDATA: /var/lib/postgresql/data
     ports:
       - "5432:5432"
     volumes:
-      - clams-pg-data:/var/lib/postgresql/data
+      - pg-data:/var/lib/postgresql/data
 
   pgadmin:
     container_name: pgadmin4_container
@@ -25,7 +25,7 @@ services:
     ports:
       - "5433:80"
     volumes:
-      - clams-pgadmin-data:/var/lib/pgadmin
+      - pgadmin-data:/var/lib/pgadmin
 
 volumes:
   pg-data:

@@ -18,6 +18,7 @@ import (
 
 type serverConfig struct {
 	Tasklist map[string]any `yaml:"tasklist"`
+	Workers  int            `yaml:"workers"`
 }
 
 func Run(cfgPath string) {
@@ -30,6 +31,10 @@ func Run(cfgPath string) {
 	err = yaml.Unmarshal(bytesArr, &serverCfg)
 	if err != nil {
 		panic(err)
+	}
+
+	if serverCfg.Workers <= 0 {
+		serverCfg.Workers = 1
 	}
 
 	<-runServers(&serverCfg)
@@ -45,11 +50,13 @@ func runServers(serverCfg *serverConfig) chan struct{} {
 		return ch
 	}
 
+	children := make([]chan struct{}, 0, 1+serverCfg.Workers)
+	children = append(children, api.Interact(sigCtx, tasks))
+	for i := 0; i < serverCfg.Workers; i++ {
+		children = append(children, backgroundRun(sigCtx, tasks))
+	}
+
 	go func() {
-		children := []chan struct{}{
-			api.Interact(sigCtx, tasks),
-			backgroundRun(sigCtx, tasks),
-		}
 		for _, child := range children {
 			<-child
 		}

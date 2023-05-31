@@ -6,9 +6,14 @@ import (
 )
 
 type Tasklist interface {
-	Read() chan task
+	NewReader() taskReader
+	// Read() chan task
 	Write(context.Context, RawTask) error
 	Close(context.Context) error
+}
+
+type taskReader interface {
+	Read(context.Context) (task, error)
 }
 
 type RawTask struct {

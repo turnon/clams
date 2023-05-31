@@ -3,6 +3,7 @@ package tasklist
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -18,24 +19,27 @@ func initPgTasklist(ctx context.Context, cfg map[string]any) (*pgTaskList, error
 	}
 
 	list := pgTaskList{
-		ctx:   ctx,
-		conn:  conn,
-		tasks: make(chan task),
+		// ctx:   ctx,
+		conn: conn,
+		wait: *time.NewTimer(0 * time.Second),
+		// tasks: make(chan task),
 	}
 	if err := list.init(ctx); err != nil {
 		return nil, err
 	}
 
-	go list.loopFetch()
+	// go list.loopFetch()
 
 	return &list, nil
 }
 
 // pgTaskList 可从pg读写任务
 type pgTaskList struct {
-	ctx   context.Context
-	conn  *pgxpool.Pool
-	tasks chan task
+	// ctx   context.Context
+	conn *pgxpool.Pool
+	lock sync.Mutex
+	wait time.Timer
+	// tasks chan task
 }
 
 // init 初始化pg任务列表
@@ -62,10 +66,10 @@ func (list *pgTaskList) Close(ctx context.Context) error {
 	return nil
 }
 
-// Read 从pg读出一个任务
-func (list *pgTaskList) Read() chan task {
-	return list.tasks
-}
+// // Read 从pg读出一个任务
+// func (list *pgTaskList) Read() chan task {
+// 	return list.tasks
+// }
 
 // Read 往pg写入一个任务
 func (list *pgTaskList) Write(ctx context.Context, rawTask RawTask) error {
@@ -82,33 +86,60 @@ func (list *pgTaskList) Write(ctx context.Context, rawTask RawTask) error {
 	return nil
 }
 
-// loopFetch 从pg轮询任务
-func (list *pgTaskList) loopFetch() {
+// // loopFetch 从pg轮询任务
+// func (list *pgTaskList) loopFetch() {
+// 	for {
+// 		select {
+// 		case <-list.ctx.Done():
+// 			return
+// 		case <-time.After(2 * time.Second):
+// 		}
+
+// 		oneTask, err := list.fetchOne(list.ctx)
+// 		if errors.Is(err, pgx.ErrNoRows) || oneTask == nil {
+// 			continue
+// 		}
+// 		if err != nil {
+// 			continue
+// 		}
+
+// 		select {
+// 		case <-list.ctx.Done():
+// 			return
+// 		case list.tasks <- oneTask:
+// 		}
+// 	}
+// }
+
+// fetchOne 从pg读出一个任务
+func (list *pgTaskList) fetchOne(ctx context.Context) (task, error) {
 	for {
 		select {
-		case <-list.ctx.Done():
-			return
-		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-list.wait.C:
 		}
 
-		oneTask, err := list.fetchOne()
-		if errors.Is(err, pgx.ErrNoRows) || oneTask == nil {
-			continue
+		t, err := list._fetchOne(ctx)
+		if err == nil {
+			return t, err
 		}
-		if err != nil {
-			continue
-		}
-
-		select {
-		case <-list.ctx.Done():
-			return
-		case list.tasks <- oneTask:
+		if errors.Is(err, pgx.ErrNoRows) {
+			list.lock.Lock()
+			if !list.wait.Stop() {
+				<-list.wait.C
+			}
+			list.wait = *time.NewTimer(5 * time.Second)
+			list.lock.Unlock()
 		}
 	}
 }
 
 // fetchOne 从pg读出一个任务
-func (list *pgTaskList) fetchOne() (task, error) {
+func (list *pgTaskList) _fetchOne(ctx context.Context) (task, error) {
+	list.lock.Lock()
+	defer list.lock.Unlock()
+
 	t := &pgTask{list: list}
 
 	sql := `
@@ -119,8 +150,8 @@ func (list *pgTaskList) fetchOne() (task, error) {
 	order by scheduled_at
 	limit 1`
 
-	err := list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-		return c.QueryRow(list.ctx, sql).Scan(&t.id, &t.description)
+	err := list.conn.AcquireFunc(ctx, func(c *pgxpool.Conn) error {
+		return c.QueryRow(ctx, sql).Scan(&t.id, &t.description)
 	})
 	if err != nil {
 		return nil, err
@@ -128,30 +159,47 @@ func (list *pgTaskList) fetchOne() (task, error) {
 
 	// lock
 	var lockable bool
-	err = list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-		return c.QueryRow(list.ctx, "select pg_try_advisory_lock($1)", t.id).Scan(&lockable)
+	err = list.conn.AcquireFunc(ctx, func(c *pgxpool.Conn) error {
+		return c.QueryRow(ctx, "select pg_try_advisory_lock($1)", t.id).Scan(&lockable)
 	})
 	if err != nil {
 		return nil, err
 	}
 	if !lockable {
-		return nil, nil
+		return nil, pgx.ErrNoRows
 	}
-	defer list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-		c.QueryRow(list.ctx, "select pg_advisory_unlock($1)", t.id)
+	defer list.conn.AcquireFunc(ctx, func(c *pgxpool.Conn) error {
+		c.QueryRow(ctx, "select pg_advisory_unlock($1)", t.id)
 		return nil
 	})
 
 	// mark performing
-	res, err := list.conn.Exec(list.ctx, "update tasks set performed_at = $1 where id = $2 and performed_at is null", time.Now(), t.id)
+	res, err := list.conn.Exec(ctx, "update tasks set performed_at = $1 where id = $2 and performed_at is null", time.Now(), t.id)
 	if err != nil {
 		return nil, err
 	}
 	if res.RowsAffected() != 1 {
-		return nil, nil
+		return nil, pgx.ErrNoRows
 	}
 
 	return t, nil
+}
+
+// NewReader 返回一个读者
+func (list *pgTaskList) NewReader() taskReader {
+	reader := &pgTaskReader{
+		list: list,
+	}
+	return reader
+}
+
+type pgTaskReader struct {
+	list *pgTaskList
+}
+
+// NewReader 返回一个读者
+func (reader *pgTaskReader) Read(ctx context.Context) (task, error) {
+	return reader.list.fetchOne(ctx)
 }
 
 // pgTask 代表一个任务
@@ -168,12 +216,12 @@ func (t *pgTask) Description() string {
 
 // Done 标记任务结束
 func (t *pgTask) Done(ctx context.Context) error {
-	_, err := t.list.conn.Exec(t.list.ctx, "update tasks set finished_at = $1 where id = $2", time.Now(), t.id)
+	_, err := t.list.conn.Exec(ctx, "update tasks set finished_at = $1 where id = $2", time.Now(), t.id)
 	return err
 }
 
 // Done 标记任务错误
 func (t *pgTask) Error(ctx context.Context, err error) error {
-	_, updateErr := t.list.conn.Exec(t.list.ctx, "update tasks set finished_at = $1,  error = $2 where id = $3", time.Now(), err.Error(), t.id)
+	_, updateErr := t.list.conn.Exec(ctx, "update tasks set finished_at = $1,  error = $2 where id = $3", time.Now(), err.Error(), t.id)
 	return updateErr
 }

@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/benthosdev/benthos/v4/public/service"
 
@@ -68,29 +67,43 @@ func runServers(serverCfg *serverConfig) chan struct{} {
 
 func backgroundRun(ctx context.Context, tasks tasklist.Tasklist) chan struct{} {
 	ch := make(chan struct{})
+	reader := tasks.NewReader()
 
 	go func() {
 		defer close(ch)
 
 		for {
-			select {
-			case <-ctx.Done():
-				closeCtx, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancelClose()
-				err := tasks.Close(closeCtx)
-				if err != nil {
-					fmt.Println(err)
-				}
+			task, err := reader.Read(ctx)
+			if err != nil {
 				fmt.Println("dead")
-				return
-			case task := <-tasks.Read():
-				if err := runTask(ctx, task.Description()); err != nil {
-					task.Error(ctx, err)
-				} else {
-					task.Done(ctx)
-				}
+				break
+			}
+			if err := runTask(ctx, task.Description()); err != nil {
+				task.Error(ctx, err)
+			} else {
+				task.Done(ctx)
 			}
 		}
+
+		// for {
+		// 	select {
+		// 	case <-ctx.Done():
+		// 		closeCtx, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
+		// 		defer cancelClose()
+		// 		err := tasks.Close(closeCtx)
+		// 		if err != nil {
+		// 			fmt.Println(err)
+		// 		}
+		// 		fmt.Println("dead")
+		// 		return
+		// 	case task := <-tasks.Read():
+		// 		if err := runTask(ctx, task.Description()); err != nil {
+		// 			task.Error(ctx, err)
+		// 		} else {
+		// 			task.Done(ctx)
+		// 		}
+		// 	}
+		// }
 	}()
 
 	return ch

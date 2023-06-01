@@ -3,17 +3,23 @@ package api
 import (
 	"context"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 	"github.com/turnon/clams/tasklist/common"
 )
 
+const mod = "api"
+
 func Interact(ctx context.Context, tasks common.Tasklist) chan struct{} {
 	gin.SetMode(gin.ReleaseMode)
-	router := gin.Default()
+
+	router := gin.New()
+	router.Use(requestLogger())
+	router.Use(gin.Recovery())
+
 	api := router.Group("api")
 
 	withTaskList := func(fn func(*gin.Context, common.Tasklist)) func(c *gin.Context) {
@@ -34,7 +40,7 @@ func Interact(ctx context.Context, tasks common.Tasklist) chan struct{} {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("api listen error:", err)
+			log.Error().Str("mod", mod).Err(err).Send()
 		}
 
 	}()
@@ -46,9 +52,9 @@ func Interact(ctx context.Context, tasks common.Tasklist) chan struct{} {
 		defer cancel()
 		err := srv.Shutdown(ctx)
 		if err == nil {
-			log.Println("api shutdown ok")
+			log.Info().Str("mod", mod).Msg("shutdown")
 		} else {
-			log.Fatal("api shutdown error:", err)
+			log.Error().Str("mod", mod).Err(err).Send()
 		}
 		close(ch)
 	}()
@@ -73,4 +79,19 @@ func postTask(c *gin.Context, tasks common.Tasklist) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{})
+}
+
+func requestLogger() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		startTime := time.Now()
+		ctx.Next()
+		log.
+			Info().
+			Str("mod", mod).
+			Int("code", ctx.Writer.Status()).
+			Str("method", ctx.Request.Method).
+			Str("path", ctx.Request.RequestURI).
+			TimeDiff("latency", time.Now(), startTime).
+			Send()
+	}
 }

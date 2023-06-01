@@ -2,6 +2,7 @@ package pgtasklist
 
 import (
 	"context"
+	"strconv"
 	"time"
 )
 
@@ -10,6 +11,11 @@ type pgTask struct {
 	list        *pgTaskList
 	id          int
 	description string
+}
+
+// Description 返回任务id
+func (t *pgTask) ID() string {
+	return strconv.Itoa(t.id)
 }
 
 // Description 返回任务脚本

@@ -9,6 +9,8 @@ import (
 
 	"github.com/benthosdev/benthos/v4/public/service"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/turnon/clams/server/api"
 	"github.com/turnon/clams/tasklist"
 	"github.com/turnon/clams/tasklist/common"
@@ -16,44 +18,58 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type serverConfig struct {
+// config 服务器配置
+type config struct {
 	Tasklist map[string]any `yaml:"tasklist"`
 	Workers  int            `yaml:"workers"`
 }
 
+// server 服务器实例
+type server struct {
+	cfg *config
+}
+
+// Run 根据配置启动服务器
 func Run(cfgPath string) {
 	bytesArr, err := ioutil.ReadFile(cfgPath)
 	if err != nil {
 		panic(err)
 	}
 
-	var serverCfg serverConfig
-	err = yaml.Unmarshal(bytesArr, &serverCfg)
+	var cfg config
+	err = yaml.Unmarshal(bytesArr, &cfg)
 	if err != nil {
 		panic(err)
 	}
 
-	if serverCfg.Workers <= 0 {
-		serverCfg.Workers = 1
+	if cfg.Workers <= 0 {
+		cfg.Workers = 1
 	}
 
-	<-runServers(&serverCfg)
+	srv := server{cfg: &cfg}
+	<-srv.run()
 }
 
-func runServers(serverCfg *serverConfig) chan struct{} {
+// log 输出日志
+func (srv *server) log(str string, v ...any) {
+	log.Debug().Str("mod", "server").Msgf(str, v...)
+}
+
+// run 运行服务器
+func (srv *server) run() chan struct{} {
 	ch := make(chan struct{})
 	sigCtx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	tasks, err := tasklist.NewTaskList(sigCtx, serverCfg.Tasklist)
+	tasks, err := tasklist.NewTaskList(sigCtx, srv.cfg.Tasklist)
 	if err != nil {
 		fmt.Println(err)
 		close(ch)
 		return ch
 	}
 
-	children := make([]chan struct{}, 0, 1+serverCfg.Workers)
+	children := make([]chan struct{}, 0, 1+srv.cfg.Workers)
 	children = append(children, api.Interact(sigCtx, tasks))
-	for i := 0; i < serverCfg.Workers; i++ {
-		children = append(children, backgroundRun(sigCtx, tasks))
+	for i := 0; i < srv.cfg.Workers; i++ {
+		children = append(children, srv.loop(sigCtx, tasks))
 	}
 
 	go func() {
@@ -66,8 +82,8 @@ func runServers(serverCfg *serverConfig) chan struct{} {
 	return ch
 }
 
-// 轮询取task执行
-func backgroundRun(ctx context.Context, taskslist common.Tasklist) chan struct{} {
+// loop 轮询取task执行
+func (srv *server) loop(ctx context.Context, taskslist common.Tasklist) chan struct{} {
 	ch := make(chan struct{})
 	reader := taskslist.NewReader()
 
@@ -83,11 +99,11 @@ func backgroundRun(ctx context.Context, taskslist common.Tasklist) chan struct{}
 
 			task, err := reader.Read(ctx)
 			if err != nil {
-				fmt.Println(err)
+				srv.log("read task %p %v", task, err)
 				continue
 			}
 
-			if err := runTask(ctx, task.Description()); err != nil {
+			if err := srv.execute(ctx, task); err != nil {
 				task.Error(ctx, err)
 			} else {
 				task.Done(ctx)
@@ -98,18 +114,23 @@ func backgroundRun(ctx context.Context, taskslist common.Tasklist) chan struct{}
 	return ch
 }
 
-func runTask(ctx context.Context, str string) error {
+// execute 执行任务
+func (srv *server) execute(ctx context.Context, task common.Task) (err error) {
+	srv.log("executeTask start: %v", task.ID())
+	defer srv.log("executeTask end: %v, %v", task.ID(), err)
+
 	builder := service.NewStreamBuilder()
 
-	err := builder.SetYAML(str)
+	err = builder.SetYAML(task.Description())
 	if err != nil {
-		return err
+		return
 	}
 
 	stream, err := builder.Build()
 	if err != nil {
-		return err
+		return
 	}
 
-	return stream.Run(ctx)
+	err = stream.Run(ctx)
+	return
 }

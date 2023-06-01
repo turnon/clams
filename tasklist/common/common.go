@@ -18,6 +18,7 @@ type RawTask struct {
 }
 
 type Task interface {
+	ID() string
 	Description() string
 	Done(context.Context) error
 	Error(context.Context, error) error

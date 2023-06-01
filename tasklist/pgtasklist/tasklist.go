@@ -23,7 +23,6 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 		ctx:        ctx,
 		conn:       conn,
 		tasksCache: newLocalcache(),
-		tasks:      make(chan common.Task),
 	}
 	if err := list.init(ctx); err != nil {
 		return nil, err
@@ -36,10 +35,10 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 
 // pgTaskList 可从pg读写任务
 type pgTaskList struct {
-	ctx        context.Context
-	conn       *pgxpool.Pool
-	tasksCache *localcache
-	tasks      chan common.Task
+	ctx         context.Context
+	conn        *pgxpool.Pool
+	tasksCache  *localcache
+	readerCount int
 }
 
 // debugf 打印调试信息
@@ -67,7 +66,9 @@ func (list *pgTaskList) init(ctx context.Context) error {
 
 // NewReader 返回一个Reader
 func (list *pgTaskList) NewReader() common.TaskReader {
+	list.readerCount += 1
 	return &pgTaskReader{
+		idx:  list.readerCount,
 		list: list,
 	}
 }
@@ -141,9 +142,9 @@ func (list *pgTaskList) loopFetch() {
 }
 
 // fetchOne 从pg读出一个任务
-func (list *pgTaskList) fetchOne(ids ...int) (common.Task, error) {
+func (list *pgTaskList) fetchOne(ctx context.Context, ids ...int) (common.Task, error) {
 	for _, id := range ids {
-		t, err := list._fetchOne(id)
+		t, err := list._fetchOne(ctx, id)
 		list.debugf("_fetchOne %v: %p, %v", id, t, err)
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
@@ -154,11 +155,11 @@ func (list *pgTaskList) fetchOne(ids ...int) (common.Task, error) {
 }
 
 // _fetchOne 从pg读出一个任务
-func (list *pgTaskList) _fetchOne(id int) (common.Task, error) {
+func (list *pgTaskList) _fetchOne(ctx context.Context, id int) (common.Task, error) {
 	// lock
 	var lockable bool
-	err := list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-		return c.QueryRow(list.ctx, "select pg_try_advisory_lock($1)", id).Scan(&lockable)
+	err := list.conn.AcquireFunc(ctx, func(c *pgxpool.Conn) error {
+		return c.QueryRow(ctx, "select pg_try_advisory_lock($1)", id).Scan(&lockable)
 	})
 	if err != nil {
 		return nil, err
@@ -166,15 +167,15 @@ func (list *pgTaskList) _fetchOne(id int) (common.Task, error) {
 	if !lockable {
 		return nil, nil
 	}
-	defer list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-		c.QueryRow(list.ctx, "select pg_advisory_unlock($1)", id)
+	defer list.conn.AcquireFunc(ctx, func(c *pgxpool.Conn) error {
+		c.QueryRow(ctx, "select pg_advisory_unlock($1)", id)
 		return nil
 	})
 
 	var t *pgTask
-	err = list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
+	err = list.conn.AcquireFunc(ctx, func(c *pgxpool.Conn) error {
 		markPerforming := "update tasks set performed_at = $1 where id = $2 and performed_at is null returning description"
-		rows, err := c.Query(list.ctx, markPerforming, time.Now(), id)
+		rows, err := c.Query(ctx, markPerforming, time.Now(), id)
 		if err != nil {
 			return err
 		}

@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io/ioutil"
 	"os/signal"
 	"syscall"
@@ -61,7 +61,7 @@ func (srv *server) run() chan struct{} {
 	sigCtx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	tasks, err := tasklist.NewTaskList(sigCtx, srv.cfg.Tasklist)
 	if err != nil {
-		fmt.Println(err)
+		srv.log("NewTaskList err: %v", err)
 		close(ch)
 		return ch
 	}
@@ -91,23 +91,16 @@ func (srv *server) loop(ctx context.Context, taskslist common.Tasklist) chan str
 		defer close(ch)
 
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
 			task, err := reader.Read(ctx)
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			if err != nil {
 				srv.log("read task %p %v", task, err)
 				continue
 			}
 
-			if err := srv.execute(ctx, task); err != nil {
-				task.Error(ctx, err)
-			} else {
-				task.Done(ctx)
-			}
+			srv.execute(ctx, task)
 		}
 	}()
 
@@ -115,7 +108,9 @@ func (srv *server) loop(ctx context.Context, taskslist common.Tasklist) chan str
 }
 
 // execute 执行任务
-func (srv *server) execute(ctx context.Context, task common.Task) (err error) {
+func (srv *server) execute(ctx context.Context, task common.Task) {
+	var err error
+
 	srv.log("executeTask start: %v", task.ID())
 	defer srv.log("executeTask end: %v, %v", task.ID(), err)
 
@@ -123,14 +118,21 @@ func (srv *server) execute(ctx context.Context, task common.Task) (err error) {
 
 	err = builder.SetYAML(task.Description())
 	if err != nil {
+		task.Error(ctx, err)
 		return
 	}
 
 	stream, err := builder.Build()
 	if err != nil {
+		task.Error(ctx, err)
 		return
 	}
 
 	err = stream.Run(ctx)
-	return
+	if err != nil {
+		task.Error(ctx, err)
+		return
+	}
+
+	task.Done(ctx)
 }

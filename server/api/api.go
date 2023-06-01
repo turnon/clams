@@ -8,15 +8,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/turnon/clams/tasklist"
+	"github.com/turnon/clams/tasklist/common"
 )
 
-func Interact(ctx context.Context, tasks tasklist.Tasklist) chan struct{} {
+func Interact(ctx context.Context, tasks common.Tasklist) chan struct{} {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
 	api := router.Group("api")
 
-	withTaskList := func(fn func(*gin.Context, tasklist.Tasklist)) func(c *gin.Context) {
+	withTaskList := func(fn func(*gin.Context, common.Tasklist)) func(c *gin.Context) {
 		return func(c *gin.Context) {
 			fn(c, tasks)
 		}
@@ -56,11 +56,11 @@ func Interact(ctx context.Context, tasks tasklist.Tasklist) chan struct{} {
 	return ch
 }
 
-func postTask(c *gin.Context, tasks tasklist.Tasklist) {
+func postTask(c *gin.Context, tasks common.Tasklist) {
 	fileHeader, _ := c.FormFile("file")
 	file, _ := fileHeader.Open()
 	bytesArr, _ := ioutil.ReadAll(file)
-	rawTask := tasklist.RawTask{
+	rawTask := common.RawTask{
 		Description: string(bytesArr),
 		ScheduledAt: c.PostForm("scheduled_at"),
 	}

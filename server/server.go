@@ -6,12 +6,12 @@ import (
 	"io/ioutil"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/benthosdev/benthos/v4/public/service"
 
 	"github.com/turnon/clams/server/api"
 	"github.com/turnon/clams/tasklist"
+	"github.com/turnon/clams/tasklist/common"
 
 	"gopkg.in/yaml.v3"
 )
@@ -66,8 +66,10 @@ func runServers(serverCfg *serverConfig) chan struct{} {
 	return ch
 }
 
-func backgroundRun(ctx context.Context, tasks tasklist.Tasklist) chan struct{} {
+// 轮询取task执行
+func backgroundRun(ctx context.Context, taskslist common.Tasklist) chan struct{} {
 	ch := make(chan struct{})
+	reader := taskslist.NewReader()
 
 	go func() {
 		defer close(ch)
@@ -75,20 +77,20 @@ func backgroundRun(ctx context.Context, tasks tasklist.Tasklist) chan struct{} {
 		for {
 			select {
 			case <-ctx.Done():
-				closeCtx, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancelClose()
-				err := tasks.Close(closeCtx)
-				if err != nil {
-					fmt.Println(err)
-				}
-				fmt.Println("dead")
 				return
-			case task := <-tasks.Read():
-				if err := runTask(ctx, task.Description()); err != nil {
-					task.Error(ctx, err)
-				} else {
-					task.Done(ctx)
-				}
+			default:
+			}
+
+			task, err := reader.Read(ctx)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			if err := runTask(ctx, task.Description()); err != nil {
+				task.Error(ctx, err)
+			} else {
+				task.Done(ctx)
 			}
 		}
 	}()

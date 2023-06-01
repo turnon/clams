@@ -1,4 +1,4 @@
-package api
+package server
 
 import (
 	"context"
@@ -13,53 +13,73 @@ import (
 
 const mod = "api"
 
-func Interact(ctx context.Context, tasks common.Tasklist) chan struct{} {
+type ApplicationInterface struct {
+	ch    chan struct{}
+	ctx   context.Context
+	tasks common.Tasklist
+}
+
+func newApi(ctx context.Context, tasks common.Tasklist) *ApplicationInterface {
+	api := &ApplicationInterface{ctx: ctx, tasks: tasks}
+	api.start()
+	return api
+}
+
+// wait 等待worker退出
+func (api *ApplicationInterface) wait() chan struct{} {
+	return api.ch
+}
+
+// logErr 输出日志
+func (api *ApplicationInterface) logErr(err error) {
+	log.Error().Str("mod", "api").Err(err).Send()
+}
+
+func (api *ApplicationInterface) start() {
+	api.ch = make(chan struct{})
+
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.New()
 	router.Use(requestLogger())
 	router.Use(gin.Recovery())
 
-	api := router.Group("api")
+	path := router.Group("api")
 
 	withTaskList := func(fn func(*gin.Context, common.Tasklist)) func(c *gin.Context) {
 		return func(c *gin.Context) {
-			fn(c, tasks)
+			fn(c, api.tasks)
 		}
 	}
 
-	v1 := api.Group("/v1")
+	v1 := path.Group("/v1")
 	{
 		v1.POST("/tasks", withTaskList(postTask))
 	}
 
-	srv := &http.Server{
+	httpSrv := &http.Server{
 		Addr:    ":8080",
 		Handler: router,
 	}
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error().Str("mod", mod).Err(err).Send()
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			api.logErr(err)
 		}
-
 	}()
 
-	ch := make(chan struct{})
 	go func() {
-		<-ctx.Done()
+		<-api.ctx.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		err := srv.Shutdown(ctx)
+		err := httpSrv.Shutdown(ctx)
 		if err == nil {
 			log.Info().Str("mod", mod).Msg("shutdown")
 		} else {
-			log.Error().Str("mod", mod).Err(err).Send()
+			api.logErr(err)
 		}
-		close(ch)
+		close(api.ch)
 	}()
-
-	return ch
 }
 
 func postTask(c *gin.Context, tasks common.Tasklist) {

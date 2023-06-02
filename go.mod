@@ -7,6 +7,7 @@ require (
 	github.com/aliyun/aliyun-tablestore-go-sdk v1.7.7
 	github.com/benthosdev/benthos/v4 v4.16.0
 	github.com/gin-gonic/gin v1.9.0
+	github.com/go-sql-driver/mysql v1.7.1
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/rs/xid v1.5.0
 	github.com/rs/zerolog v1.29.1

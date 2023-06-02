@@ -42,6 +42,12 @@ func (un *unwindProcessor) Process(ctx context.Context, msg *service.Message) (s
 		return []*service.Message{msg}, nil
 	}
 
+	if valueMaybeArrayInString, isStr := valueMaybeArray.(string); isStr {
+		if err = json.Unmarshal([]byte(valueMaybeArrayInString), &valueMaybeArray); err != nil {
+			return []*service.Message{msg}, nil
+		}
+	}
+
 	valueAsArray := valueMaybeArray.([]any)
 	msgs := make([]*service.Message, 0, len(valueAsArray))
 	for _, element := range valueAsArray {

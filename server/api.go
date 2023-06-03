@@ -49,6 +49,7 @@ func (api *ApplicationInterface) start() {
 	v1 := path.Group("/v1")
 	{
 		v1.POST("/tasks", api.postTasks)
+		v1.DELETE("/tasks/:id", api.deleteTasks)
 	}
 
 	httpSrv := &http.Server{
@@ -76,6 +77,7 @@ func (api *ApplicationInterface) start() {
 	}()
 }
 
+// postTasks 新建任务
 func (api *ApplicationInterface) postTasks(c *gin.Context) {
 	fileHeader, _ := c.FormFile("file")
 	file, _ := fileHeader.Open()
@@ -93,6 +95,19 @@ func (api *ApplicationInterface) postTasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{})
+}
+
+// deleteTasks 删除任务
+func (api *ApplicationInterface) deleteTasks(c *gin.Context) {
+	id := c.Param("id")
+	err := api.tasks.Delete(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusNoContent, gin.H{})
 }
 
 func requestLogger() gin.HandlerFunc {

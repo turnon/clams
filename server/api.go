@@ -46,15 +46,9 @@ func (api *ApplicationInterface) start() {
 
 	path := router.Group("api")
 
-	withTaskList := func(fn func(*gin.Context, common.Tasklist)) func(c *gin.Context) {
-		return func(c *gin.Context) {
-			fn(c, api.tasks)
-		}
-	}
-
 	v1 := path.Group("/v1")
 	{
-		v1.POST("/tasks", withTaskList(postTask))
+		v1.POST("/tasks", api.postTasks)
 	}
 
 	httpSrv := &http.Server{
@@ -82,7 +76,7 @@ func (api *ApplicationInterface) start() {
 	}()
 }
 
-func postTask(c *gin.Context, tasks common.Tasklist) {
+func (api *ApplicationInterface) postTasks(c *gin.Context) {
 	fileHeader, _ := c.FormFile("file")
 	file, _ := fileHeader.Open()
 	bytesArr, _ := ioutil.ReadAll(file)
@@ -91,7 +85,7 @@ func postTask(c *gin.Context, tasks common.Tasklist) {
 		ScheduledAt: c.PostForm("scheduled_at"),
 	}
 
-	err := tasks.Write(c.Request.Context(), rawTask)
+	err := api.tasks.Write(c.Request.Context(), rawTask)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),

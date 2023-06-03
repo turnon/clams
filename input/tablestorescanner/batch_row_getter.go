@@ -48,7 +48,6 @@ func (brg *batchRowGetter) get(uuids []interface{}) ([]map[string]any, error) {
 	batchGetReq := &tablestore.BatchGetRowRequest{}
 	mqCriteria := &tablestore.MultiRowQueryCriteria{}
 
-	// logger.Debugf("uuids => %v", uuids)
 	for _, uuid := range uuids {
 		pkToGet := new(tablestore.PrimaryKey)
 		pkToGet.AddPrimaryKeyColumn("uuid", uuid)

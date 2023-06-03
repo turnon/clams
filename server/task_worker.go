@@ -10,13 +10,14 @@ import (
 )
 
 type taskWorker struct {
-	taskslist common.Tasklist
 	ctx       context.Context
+	taskslist common.Tasklist
+	idx       int
 	ch        chan struct{}
 }
 
-func newTaskWorker(ctx context.Context, taskslist common.Tasklist) *taskWorker {
-	worker := &taskWorker{taskslist: taskslist, ctx: ctx}
+func newTaskWorker(ctx context.Context, idx int, taskslist common.Tasklist) *taskWorker {
+	worker := &taskWorker{taskslist: taskslist, ctx: ctx, idx: idx}
 	worker.loop()
 	return worker
 }
@@ -26,9 +27,14 @@ func (worker *taskWorker) wait() chan struct{} {
 	return worker.ch
 }
 
-// log 输出日志
-func (worker *taskWorker) log(str string, v ...any) {
-	log.Debug().Str("mod", "taskWorker").Msgf(str, v...)
+// logDebug 输出日志
+func (worker *taskWorker) logDebug(str string, v ...any) {
+	log.Debug().Str("mod", "taskWorker").Int("idx", worker.idx).Msgf(str, v...)
+}
+
+// logInfo 输出日志
+func (worker *taskWorker) logInfo(str string, v ...any) {
+	log.Info().Str("mod", "taskWorker").Int("idx", worker.idx).Msgf(str, v...)
 }
 
 // loop 轮询取task执行
@@ -45,7 +51,7 @@ func (worker *taskWorker) loop() {
 				return
 			}
 			if err != nil {
-				worker.log("read task %p %v", task, err)
+				worker.logDebug("read task %p %v", task, err)
 				continue
 			}
 
@@ -58,8 +64,8 @@ func (worker *taskWorker) loop() {
 func (worker *taskWorker) execute(ctx context.Context, task common.Task) {
 	var err error
 
-	worker.log("executeTask start: %v", task.ID())
-	defer worker.log("executeTask end: %v, %v", task.ID(), err)
+	worker.logInfo("executeTask start: %v", task.ID())
+	defer worker.logInfo("executeTask end: %v, %v", task.ID(), err)
 
 	builder := service.NewStreamBuilder()
 

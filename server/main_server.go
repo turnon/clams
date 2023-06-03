@@ -67,7 +67,7 @@ func (srv *mainServer) run() chan struct{} {
 	children := make([]subordinate, 0, 1+srv.cfg.Workers)
 	children = append(children, newApi(sigCtx, tasks))
 	for i := 0; i < srv.cfg.Workers; i++ {
-		children = append(children, newTaskWorker(sigCtx, tasks))
+		children = append(children, newTaskWorker(sigCtx, i, tasks))
 	}
 
 	// 等待从服务器退出

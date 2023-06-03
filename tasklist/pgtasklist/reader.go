@@ -20,15 +20,8 @@ func (reader *pgTaskReader) debugf(str string, v ...any) {
 	log.Debug().Str("mod", "pgTaskReader").Int("idx", reader.idx).Msgf(str, v...)
 }
 
-// infof 输出日志
-func (reader *pgTaskReader) infof(str string, v ...any) {
-	log.Info().Str("mod", "pgTaskReader").Int("idx", reader.idx).Msgf(str, v...)
-}
-
 // Read 读取一个任务
 func (reader *pgTaskReader) Read(ctx context.Context) (common.Task, error) {
-	defer reader.infof("return")
-
 	for {
 		select {
 		case <-ctx.Done():

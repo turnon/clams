@@ -112,36 +112,40 @@ func (list *pgTaskList) listenForAbort() {
 			case <-list.ctx.Done():
 				return
 			case <-abortSignal:
-				funcErr := list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-					ids := list.localTasks.getIds()
-					if len(ids) == 0 {
-						return nil
-					}
-
-					sql := "select id from tasks where cancelled_at is not null and id = any($1)"
-					rows, queryErr := c.Query(list.ctx, sql, ids)
-					if queryErr != nil {
-						return queryErr
-					}
-					defer rows.Close()
-
-					for rows.Next() {
-						var id int
-						if scanErr := rows.Scan(&id); scanErr != nil {
-							return scanErr
-						}
-						list.localTasks.del(id)
-					}
-
-					return nil
-				})
-				if funcErr != nil {
-					list.errorf("loop abortSignal: %v", funcErr)
+				if err := list.abortTasks(); err != nil {
+					list.errorf("loop abortSignal: %v", err)
 					return
 				}
 			}
 		}
 	}()
+}
+
+// abortTasks 中止运行中的任务
+func (list *pgTaskList) abortTasks() error {
+	return list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
+		ids := list.localTasks.getIds()
+		if len(ids) == 0 {
+			return nil
+		}
+
+		sql := "select id from tasks where cancelled_at is not null and id = any($1)"
+		rows, queryErr := c.Query(list.ctx, sql, ids)
+		if queryErr != nil {
+			return queryErr
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var id int
+			if scanErr := rows.Scan(&id); scanErr != nil {
+				return scanErr
+			}
+			list.localTasks.del(id)
+		}
+
+		return nil
+	})
 }
 
 // NewReader 返回一个Reader

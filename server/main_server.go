@@ -64,11 +64,10 @@ func (srv *mainServer) run() chan struct{} {
 	}
 
 	// 运行从服务器
-	children := make([]subordinate, 0, 1+srv.cfg.Workers)
-	children = append(children, newApi(sigCtx, tasks), newWorkteam(sigCtx, tasks, srv.cfg.Workers))
-	// for i := 0; i < srv.cfg.Workers; i++ {
-	// 	children = append(children, newTaskWorker(sigCtx, i, tasks))
-	// }
+	children := []subordinate{
+		newApi(sigCtx, tasks),
+		newWorkteam(sigCtx, tasks, srv.cfg.Workers),
+	}
 
 	// 等待从服务器退出
 	go func() {

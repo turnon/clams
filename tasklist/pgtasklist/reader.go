@@ -29,7 +29,7 @@ func (reader *pgTaskReader) Read(ctx context.Context) (common.Task, error) {
 		default:
 		}
 
-		ids := reader.list.tasksCache.get()
+		ids := reader.list.localTasks.getIds()
 		reader.debugf("get %v", ids)
 
 		if len(ids) == 0 {

@@ -43,8 +43,14 @@ start server
 go run main.go -server server.yml
 ```
 
-send script
+create task
 
 ```sh
-curl -F 'file=@script.yml' localhost:8080/api/v1/tasks
+curl -F 'file=@script.yml' -F 'scheduled_at=2023-12-31 00:00:00' localhost:8080/api/v1/tasks
+```
+
+cancel task
+
+```sh
+curl -X DELETE localhost:8080/api/v1/tasks/234
 ```

@@ -3,14 +3,10 @@ package common
 import "context"
 
 type Tasklist interface {
-	NewReader() TaskReader
+	Read(context.Context) (Task, error)
 	Write(context.Context, RawTask) error
 	Delete(context.Context, string) error
 	Close(context.Context) error
-}
-
-type TaskReader interface {
-	Read(context.Context) (Task, error)
 }
 
 type RawTask struct {

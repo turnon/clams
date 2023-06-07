@@ -74,13 +74,12 @@ func (worker *taskWorker) logInfo(str string, v ...any) {
 // loop 轮询取task执行
 func (worker *taskWorker) loop() {
 	worker.ch = make(chan struct{})
-	reader := worker.taskslist.NewReader()
 
 	go func() {
 		defer close(worker.ch)
 
 		for {
-			task, err := reader.Read(worker.ctx)
+			task, err := worker.taskslist.Read(worker.ctx)
 			if errors.Is(err, context.Canceled) {
 				return
 			}

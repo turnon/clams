@@ -32,9 +32,9 @@ server config
 ```yml
 tasklist:
   type: pg
-  url: postgresql://postgres:mysecretpassword@localhost:5432/postgres
+  url: postgresql://admin:secret@localhost:5432/postgres
 
-workers: 2
+workers: 4
 ```
 
 start server

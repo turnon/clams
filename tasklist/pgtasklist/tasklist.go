@@ -22,9 +22,10 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 		return nil, err
 	}
 
-	list := pgTaskList{
+	list := &pgTaskList{
 		ctx:          ctx,
 		conn:         conn,
+		passedIds:    make([]int, 0, 10),
 		readyTaskIds: make(chan int),
 		runningTasks: newLocalcache(),
 		newSignal:    make(chan struct{}, 1),
@@ -38,13 +39,14 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 	go list.listenChanForAbort()
 	go list.loopDbAndListenChanForNew()
 
-	return &list, nil
+	return list, nil
 }
 
 // pgTaskList 可从pg读写任务
 type pgTaskList struct {
 	ctx          context.Context
 	conn         *pgxpool.Pool
+	passedIds    []int
 	readyTaskIds chan int
 	runningTasks *localcache
 	newSignal    chan struct{}
@@ -233,7 +235,7 @@ func (list *pgTaskList) Write(ctx context.Context, rawTask common.RawTask) error
 func (list *pgTaskList) loopDbAndListenChanForNew() {
 	for {
 		err := list.fetchSomeIds()
-		list.debugf("loopFindTasks %v", err)
+		list.debugf("loopDbAndListenChanForNew %v", err)
 
 		if errors.Is(err, pgx.ErrNoRows) {
 			select {
@@ -255,14 +257,19 @@ func (list *pgTaskList) fetchSomeIds() error {
 	from tasks
 	where performed_at is null
 	and scheduled_at <= $1
+	and id <> any($2)
 	and finished_at is null
 	and cancelled_at is null
 	order by scheduled_at
 	limit 10`
 
+	if len(list.passedIds) == 0 {
+		list.passedIds = append(list.passedIds, 0)
+	}
+
 	idSet := make(map[int]struct{})
 	funcErr := list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-		rows, queryErr := c.Query(list.ctx, sql, list.timeNowStr())
+		rows, queryErr := c.Query(list.ctx, sql, list.timeNowStr(), list.passedIds)
 		if queryErr != nil {
 			return queryErr
 		}
@@ -277,6 +284,7 @@ func (list *pgTaskList) fetchSomeIds() error {
 		}
 		return nil
 	})
+	list.passedIds = list.passedIds[:0]
 	if funcErr != nil {
 		return funcErr
 	}
@@ -293,6 +301,7 @@ func (list *pgTaskList) fetchSomeIds() error {
 		case <-maybeOutdated:
 			return nil
 		case list.readyTaskIds <- id:
+			list.passedIds = append(list.passedIds, id)
 		}
 	}
 

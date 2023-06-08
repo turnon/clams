@@ -205,7 +205,7 @@ func (list *pgTaskList) Delete(ctx context.Context, idStr string) error {
 func (list *pgTaskList) Write(ctx context.Context, rawTask common.RawTask) error {
 	scheduledAt := rawTask.ScheduledAt
 	if scheduledAt == "" {
-		scheduledAt = time.Now().Format("2006-01-02 15:04:05")
+		scheduledAt = list.timeNowStr()
 	}
 
 	sql := "insert into tasks (description, created_at, scheduled_at) values ($1, $2, $3)"
@@ -220,6 +220,12 @@ func (list *pgTaskList) Write(ctx context.Context, rawTask common.RawTask) error
 func (list *pgTaskList) loopFindTasks() {
 	for {
 		err := list.fetchSomeIds()
+		list.debugf("loopFindTasks %v", err)
+
+		if errors.Is(err, pgx.ErrNoRows) {
+			<-time.After(1 * time.Minute)
+			continue
+		}
 		if errors.Is(err, context.Canceled) {
 			return
 		}
@@ -232,7 +238,7 @@ func (list *pgTaskList) fetchSomeIds() error {
 	select id
 	from tasks
 	where performed_at is null
-	and scheduled_at <= current_timestamp
+	and scheduled_at <= $1
 	and finished_at is null
 	and cancelled_at is null
 	order by scheduled_at
@@ -240,7 +246,7 @@ func (list *pgTaskList) fetchSomeIds() error {
 
 	idSet := make(map[int]struct{})
 	funcErr := list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-		rows, queryErr := c.Query(list.ctx, sql)
+		rows, queryErr := c.Query(list.ctx, sql, list.timeNowStr())
 		if queryErr != nil {
 			return queryErr
 		}
@@ -324,13 +330,14 @@ func (list *pgTaskList) _fetchOne(ctx context.Context, id int) (common.Task, err
 		update tasks
 		set performed_at = $1
 		where id = $2
-		and scheduled_at <= current_timestamp
+		and scheduled_at <= $3
 		and performed_at is null
 		and cancelled_at is null
 		returning description
 		`
 
-		rows, err := c.Query(ctx, markPerforming, time.Now(), id)
+		now := list.timeNowStr()
+		rows, err := c.Query(ctx, markPerforming, now, id, now)
 		if err != nil {
 			return err
 		}
@@ -356,4 +363,9 @@ func (list *pgTaskList) _fetchOne(ctx context.Context, id int) (common.Task, err
 	})
 
 	return t, fnErr
+}
+
+// timeNowStr 当前时间
+func (list *pgTaskList) timeNowStr() string {
+	return time.Now().Format("2006-01-02 15:04:05")
 }

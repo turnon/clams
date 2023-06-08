@@ -2,14 +2,14 @@ package local
 
 import (
 	"context"
-	"io/ioutil"
+	"os"
 
 	"github.com/benthosdev/benthos/v4/public/service"
 	"github.com/rs/zerolog/log"
 )
 
 func Run(path string) {
-	bytesArr, err := ioutil.ReadFile(path)
+	bytesArr, err := os.ReadFile(path)
 	if err != nil {
 		logFatal(err)
 	}

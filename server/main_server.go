@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"io/ioutil"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -31,7 +31,7 @@ type subordinate interface {
 
 // Run 根据配置启动服务器
 func Run(cfgPath string) {
-	bytesArr, err := ioutil.ReadFile(cfgPath)
+	bytesArr, err := os.ReadFile(cfgPath)
 	if err != nil {
 		panic(err)
 	}

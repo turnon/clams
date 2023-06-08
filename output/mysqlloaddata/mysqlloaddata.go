@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,7 +193,7 @@ func (loaddata *mysqlloaddata) WriteBatch(ctx context.Context, msgs service.Mess
 	fileName := loaddata.localFileName()
 	cmd := loaddata.loadCmd()
 
-	if err = ioutil.WriteFile(fileName, []byte(*content), 0644); err != nil {
+	if err = os.WriteFile(fileName, []byte(*content), 0644); err != nil {
 		return err
 	}
 

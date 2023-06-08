@@ -3,14 +3,14 @@ package tablestorescanner
 import (
 	"context"
 	"errors"
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/benthosdev/benthos/v4/public/service"
 )
 
 func TestTablestoreInputut(t *testing.T) {
-	conf, err := ioutil.ReadFile("_config.yaml")
+	conf, err := os.ReadFile("_config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

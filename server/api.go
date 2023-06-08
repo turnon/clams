@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -81,7 +81,7 @@ func (api *ApplicationInterface) start() {
 func (api *ApplicationInterface) postTasks(c *gin.Context) {
 	fileHeader, _ := c.FormFile("file")
 	file, _ := fileHeader.Open()
-	bytesArr, _ := ioutil.ReadAll(file)
+	bytesArr, _ := io.ReadAll(file)
 	rawTask := common.RawTask{
 		Description: string(bytesArr),
 		ScheduledAt: c.PostForm("scheduled_at"),

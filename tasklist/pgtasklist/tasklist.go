@@ -23,10 +23,10 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 	}
 
 	list := pgTaskList{
-		ctx:        ctx,
-		conn:       conn,
-		taskIds:    make(chan int),
-		localTasks: newLocalcache(),
+		ctx:          ctx,
+		conn:         conn,
+		readyTaskIds: make(chan int),
+		runningTasks: newLocalcache(),
 	}
 	if err := list.init(ctx); err != nil {
 		return nil, err
@@ -40,10 +40,10 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 
 // pgTaskList 可从pg读写任务
 type pgTaskList struct {
-	ctx        context.Context
-	conn       *pgxpool.Pool
-	taskIds    chan int
-	localTasks *localcache
+	ctx          context.Context
+	conn         *pgxpool.Pool
+	readyTaskIds chan int
+	runningTasks *localcache
 }
 
 // debugf 打印调试信息
@@ -125,7 +125,7 @@ func (list *pgTaskList) listenForAbort() {
 // abortTasks 中止运行中的任务
 func (list *pgTaskList) abortTasks() error {
 	return list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-		ids := list.localTasks.getIds()
+		ids := list.runningTasks.getIds()
 		if len(ids) == 0 {
 			return nil
 		}
@@ -142,7 +142,7 @@ func (list *pgTaskList) abortTasks() error {
 			if scanErr := rows.Scan(&id); scanErr != nil {
 				return scanErr
 			}
-			list.localTasks.del(id)
+			list.runningTasks.del(id)
 		}
 
 		return nil
@@ -155,7 +155,7 @@ func (list *pgTaskList) Read(ctx context.Context) (common.Task, error) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case id := <-list.taskIds:
+		case id := <-list.readyTaskIds:
 			t, err := list.fetchOne(ctx, id)
 			if err == nil || err == context.Canceled {
 				return t, err
@@ -276,7 +276,7 @@ func (list *pgTaskList) fetchSomeIds() error {
 			return list.ctx.Err()
 		case <-maybeOutdated:
 			return nil
-		case list.taskIds <- id:
+		case list.readyTaskIds <- id:
 		}
 	}
 
@@ -358,7 +358,7 @@ func (list *pgTaskList) _fetchOne(ctx context.Context, id int) (common.Task, err
 			description: desc,
 			aborted:     make(chan struct{}),
 		}
-		list.localTasks.set(id, t)
+		list.runningTasks.set(id, t)
 		return nil
 	})
 

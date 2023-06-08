@@ -27,13 +27,16 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 		conn:         conn,
 		readyTaskIds: make(chan int),
 		runningTasks: newLocalcache(),
+		newSignal:    make(chan struct{}, 1),
+		abortSignal:  make(chan struct{}, 1),
 	}
 	if err := list.init(ctx); err != nil {
 		return nil, err
 	}
 
-	go list.loopFindTasks()
-	go list.listenForAbort()
+	go list.listenDbForChange()
+	go list.listenChanForAbort()
+	go list.loopDbAndListenChanForNew()
 
 	return &list, nil
 }
@@ -44,6 +47,8 @@ type pgTaskList struct {
 	conn         *pgxpool.Pool
 	readyTaskIds chan int
 	runningTasks *localcache
+	newSignal    chan struct{}
+	abortSignal  chan struct{}
 }
 
 // debugf 打印调试信息
@@ -76,50 +81,56 @@ func (list *pgTaskList) init(ctx context.Context) error {
 	return nil
 }
 
-// listenForAbort 监听任务中止
-func (list *pgTaskList) listenForAbort() {
-	abortSignal := make(chan struct{}, 1)
+// listenForChange 监听任务变化
+func (list *pgTaskList) listenDbForChange() {
+	list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
+		_, listenErr := c.Exec(list.ctx, "listen "+tasksChannel)
+		if listenErr != nil {
+			list.errorf("list: %v", listenErr)
+			close(list.newSignal)
+			close(list.abortSignal)
+		}
 
-	go func() {
-		list.conn.AcquireFunc(list.ctx, func(c *pgxpool.Conn) error {
-			_, listenErr := c.Exec(list.ctx, "listen "+tasksChannel)
-			if listenErr != nil {
-				list.errorf("list: %v", listenErr)
-				close(abortSignal)
-			}
-
-			for {
-				_, waitErr := c.Conn().WaitForNotification(list.ctx)
-				if errors.Is(waitErr, context.Canceled) {
-					return nil
-				}
-				if waitErr != nil {
-					list.errorf("WaitForNotification: %v", waitErr)
-					close(abortSignal)
-					return waitErr
-				}
-
-				select {
-				case abortSignal <- struct{}{}:
-				default:
-				}
-			}
-		})
-	}()
-
-	go func() {
 		for {
+			note, waitErr := c.Conn().WaitForNotification(list.ctx)
+			if errors.Is(waitErr, context.Canceled) {
+				return nil
+			}
+			if waitErr != nil {
+				list.errorf("WaitForNotification: %v", waitErr)
+				close(list.newSignal)
+				close(list.abortSignal)
+				return waitErr
+			}
+
+			var ch chan struct{}
+			if note.Payload == "abort" {
+				ch = list.abortSignal
+			} else {
+				ch = list.newSignal
+			}
+
 			select {
-			case <-list.ctx.Done():
-				return
-			case <-abortSignal:
-				if err := list.abortTasks(); err != nil {
-					list.errorf("loop abortSignal: %v", err)
-					return
-				}
+			case ch <- struct{}{}:
+			default:
 			}
 		}
-	}()
+	})
+}
+
+// listenChanForAbort 监听任务中止
+func (list *pgTaskList) listenChanForAbort() {
+	for {
+		select {
+		case <-list.ctx.Done():
+			return
+		case <-list.abortSignal:
+			if err := list.abortTasks(); err != nil {
+				list.errorf("loop abortSignal: %v", err)
+				return
+			}
+		}
+	}
 }
 
 // abortTasks 中止运行中的任务
@@ -213,17 +224,22 @@ func (list *pgTaskList) Write(ctx context.Context, rawTask common.RawTask) error
 	if err != nil {
 		return err
 	}
+
+	list.conn.Exec(context.Background(), "select pg_notify('"+tasksChannel+"', $1)", "new")
 	return nil
 }
 
-// loopFindTasks 从pg轮询任务
-func (list *pgTaskList) loopFindTasks() {
+// loopDbAndListenChanForNew 从pg轮询新任务，也监听新任务
+func (list *pgTaskList) loopDbAndListenChanForNew() {
 	for {
 		err := list.fetchSomeIds()
 		list.debugf("loopFindTasks %v", err)
 
 		if errors.Is(err, pgx.ErrNoRows) {
-			<-time.After(1 * time.Minute)
+			select {
+			case <-list.newSignal:
+			case <-time.After(1 * time.Minute):
+			}
 			continue
 		}
 		if errors.Is(err, context.Canceled) {

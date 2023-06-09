@@ -21,7 +21,8 @@ func main() {
 
 	serverCfgFile := flag.String("server", "", "server config")
 	localCfgFile := flag.String("local", "", "run locally")
-	debug := flag.Bool("debug", false, "sets log level to debug")
+	ymlAnchor := flag.String("anchor", "", "anchor definition")
+	debug := flag.Bool("debug", false, "make log level DEBUG")
 	flag.Parse()
 
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -30,13 +31,27 @@ func main() {
 	}
 	log.Debug().Int("pid", os.Getpid()).Send()
 
+	anchors := loadAnchors(*ymlAnchor)
+
 	if *serverCfgFile != "" {
-		server.Run(*serverCfgFile)
+		server.Run(anchors, *serverCfgFile)
 		return
 	}
 
 	if *localCfgFile != "" {
-		local.Run(*localCfgFile)
+		local.Run(anchors, *localCfgFile)
 		return
 	}
+}
+
+func loadAnchors(file string) string {
+	if file == "" {
+		return ""
+	}
+
+	bytesAnchors, err := os.ReadFile(file)
+	if err != nil {
+		panic(err)
+	}
+	return string(bytesAnchors)
 }

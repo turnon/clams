@@ -21,7 +21,8 @@ type config struct {
 
 // mainServer 主服务器
 type mainServer struct {
-	cfg *config
+	cfg     *config
+	anchors string
 }
 
 // subordinate 从服务器
@@ -30,7 +31,7 @@ type subordinate interface {
 }
 
 // Run 根据配置启动服务器
-func Run(cfgPath string) {
+func Run(anchors string, cfgPath string) {
 	bytesArr, err := os.ReadFile(cfgPath)
 	if err != nil {
 		panic(err)
@@ -46,7 +47,7 @@ func Run(cfgPath string) {
 		cfg.Workers = 1
 	}
 
-	srv := mainServer{cfg: &cfg}
+	srv := mainServer{cfg: &cfg, anchors: anchors}
 	<-srv.run()
 }
 
@@ -66,7 +67,7 @@ func (srv *mainServer) run() chan struct{} {
 	// 运行从服务器
 	children := []subordinate{
 		newApi(sigCtx, tasks),
-		newWorkteam(sigCtx, tasks, srv.cfg.Workers),
+		newWorkteam(sigCtx, tasks, srv.cfg.Workers, srv.anchors),
 	}
 
 	// 等待从服务器退出

@@ -6,17 +6,23 @@ import (
 
 	"github.com/benthosdev/benthos/v4/public/service"
 	"github.com/rs/zerolog/log"
+	"github.com/turnon/clams/util"
 )
 
-func Run(path string) {
-	bytesArr, err := os.ReadFile(path)
+func Run(anchors string, path string) {
+	ymlBytes, err := os.ReadFile(path)
+	if err != nil {
+		logFatal(err)
+	}
+
+	ymlStr, err := util.InterpolateYamlAnchor(anchors, string(ymlBytes))
 	if err != nil {
 		logFatal(err)
 	}
 
 	builder := service.NewStreamBuilder()
 
-	if err = builder.SetYAML(string(bytesArr)); err != nil {
+	if err = builder.SetYAML(ymlStr); err != nil {
 		logFatal(err)
 	}
 

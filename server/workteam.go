@@ -9,6 +9,7 @@ import (
 	"github.com/benthosdev/benthos/v4/public/service"
 	"github.com/rs/zerolog/log"
 	"github.com/turnon/clams/tasklist/common"
+	"github.com/turnon/clams/util"
 )
 
 // workteam 工作组
@@ -18,14 +19,14 @@ type workteam struct {
 }
 
 // newWorkteam 创建工作组
-func newWorkteam(ctx context.Context, taskslist common.Tasklist, workerCount int) *workteam {
+func newWorkteam(ctx context.Context, taskslist common.Tasklist, workerCount int, anchors string) *workteam {
 	team := &workteam{
 		workers: make([]*taskWorker, 0, workerCount),
 		running: make(chan struct{}),
 	}
 
 	for i := 0; i < workerCount; i++ {
-		team.workers = append(team.workers, newTaskWorker(ctx, i, taskslist))
+		team.workers = append(team.workers, newTaskWorker(ctx, i, anchors, taskslist))
 	}
 
 	go func() {
@@ -48,14 +49,15 @@ type taskWorker struct {
 	ctx       context.Context
 	taskslist common.Tasklist
 	id        string
+	anchors   string
 	running   chan struct{}
 }
 
 // newTaskWorker 创建worker
-func newTaskWorker(ctx context.Context, idx int, taskslist common.Tasklist) *taskWorker {
+func newTaskWorker(ctx context.Context, idx int, anchors string, taskslist common.Tasklist) *taskWorker {
 	hostname, _ := os.Hostname()
 	id := hostname + ":" + strconv.Itoa(os.Getpid()) + ":" + strconv.Itoa(idx)
-	worker := &taskWorker{taskslist: taskslist, ctx: ctx, id: id}
+	worker := &taskWorker{taskslist: taskslist, ctx: ctx, id: id, anchors: anchors}
 	worker.loop()
 	return worker
 }
@@ -101,7 +103,13 @@ func (worker *taskWorker) execute(task common.Task) {
 
 	builder := service.NewStreamBuilder()
 
-	err = builder.SetYAML(task.Description())
+	taskDesc, err := util.InterpolateYamlAnchor(worker.anchors, task.Description())
+	if err != nil {
+		task.Error(worker.ctx, err)
+		return
+	}
+
+	err = builder.SetYAML(taskDesc)
 	if err != nil {
 		task.Error(worker.ctx, err)
 		return

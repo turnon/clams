@@ -239,12 +239,10 @@ func (ts *tablestoreInput) makeFilter(column string, operator string, value any)
 	} else if operator == "terms" {
 		q := &search.TermsQuery{}
 		q.FieldName = column
-		strs := value.([]string)
-		interfaces := make([]interface{}, 0, len(strs))
-		for _, str := range strs {
-			interfaces = append(interfaces, str)
-		}
-		q.Terms = interfaces
+		values := value.([]any)
+		anythings := make([]any, 0, len(values))
+		anythings = append(anythings, values...)
+		q.Terms = anythings
 		return q
 	} else {
 		q := &search.RangeQuery{}

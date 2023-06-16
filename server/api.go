@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,13 +15,14 @@ import (
 const mod = "api"
 
 type ApplicationInterface struct {
+	port  int
 	ch    chan struct{}
 	ctx   context.Context
 	tasks common.Tasklist
 }
 
-func newApi(ctx context.Context, tasks common.Tasklist) *ApplicationInterface {
-	api := &ApplicationInterface{ctx: ctx, tasks: tasks}
+func newApi(ctx context.Context, port int, tasks common.Tasklist) *ApplicationInterface {
+	api := &ApplicationInterface{ctx: ctx, port: port, tasks: tasks}
 	api.start()
 	return api
 }
@@ -37,6 +39,9 @@ func (api *ApplicationInterface) logErr(err error) {
 
 func (api *ApplicationInterface) start() {
 	api.ch = make(chan struct{})
+	if api.port == 0 {
+		api.port = 80
+	}
 
 	gin.SetMode(gin.ReleaseMode)
 
@@ -53,7 +58,7 @@ func (api *ApplicationInterface) start() {
 	}
 
 	httpSrv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + strconv.Itoa(api.port),
 		Handler: router,
 	}
 

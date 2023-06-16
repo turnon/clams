@@ -17,6 +17,7 @@ import (
 type config struct {
 	Tasklist map[string]any `yaml:"tasklist"`
 	Workers  int            `yaml:"workers"`
+	Port     int            `yaml:"port"`
 }
 
 // mainServer 主服务器
@@ -66,7 +67,7 @@ func (srv *mainServer) run() chan struct{} {
 
 	// 运行从服务器
 	children := []subordinate{
-		newApi(sigCtx, tasks),
+		newApi(sigCtx, srv.cfg.Port, tasks),
 		newWorkteam(sigCtx, tasks, srv.cfg.Workers, srv.anchors),
 	}
 

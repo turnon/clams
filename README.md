@@ -114,3 +114,9 @@ cancel task
 ```sh
 curl -X DELETE localhost:8080/api/v1/tasks/234
 ```
+
+peek task
+
+```sh
+curl -X GET localhost:8080/api/v1/tasks/234
+```

@@ -55,6 +55,7 @@ func (api *ApplicationInterface) start() {
 	{
 		v1.POST("/tasks", api.postTasks)
 		v1.DELETE("/tasks/:id", api.deleteTasks)
+		v1.GET("/tasks/:id", api.getTasks)
 	}
 
 	httpSrv := &http.Server{
@@ -113,6 +114,22 @@ func (api *ApplicationInterface) deleteTasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusNoContent, gin.H{})
+}
+
+// getTasks 查看任务
+func (api *ApplicationInterface) getTasks(c *gin.Context) {
+	id := c.Param("id")
+	t, err := api.tasks.Peek(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.Header("Content-Disposition", "attachment; filename="+id+".yml")
+	c.Header("Content-Type", "application/octet-stream")
+	c.Writer.Write([]byte(t.Description))
 }
 
 func requestLogger() gin.HandlerFunc {

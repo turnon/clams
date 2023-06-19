@@ -190,6 +190,17 @@ func (list *pgTaskList) Close(ctx context.Context) error {
 	return nil
 }
 
+// Peek 查看任务
+func (list *pgTaskList) Peek(ctx context.Context, idStr string) (common.RawTask, error) {
+	var desc string
+	list.conn.QueryRow(ctx, "select description from tasks where id = $1", idStr).Scan(&desc)
+
+	rawTask := common.RawTask{
+		Description: desc,
+	}
+	return rawTask, nil
+}
+
 // Delete 删除任务
 func (list *pgTaskList) Delete(ctx context.Context, idStr string) error {
 	idInt, idErr := strconv.Atoi(idStr)

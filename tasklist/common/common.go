@@ -6,6 +6,7 @@ type Tasklist interface {
 	Read(context.Context) (Task, error)
 	Write(context.Context, RawTask) error
 	Delete(context.Context, string) error
+	Peek(context.Context, string) (RawTask, error)
 	Close(context.Context) error
 }
 

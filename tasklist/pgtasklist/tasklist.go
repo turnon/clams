@@ -22,9 +22,15 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 		return nil, err
 	}
 
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return nil, err
+	}
+
 	list := &pgTaskList{
 		ctx:          ctx,
 		conn:         conn,
+		location:     loc,
 		passedIds:    make([]int, 0, 10),
 		readyTaskIds: make(chan int),
 		runningTasks: newLocalcache(),
@@ -46,6 +52,7 @@ func Init(ctx context.Context, cfg map[string]any) (*pgTaskList, error) {
 type pgTaskList struct {
 	ctx          context.Context
 	conn         *pgxpool.Pool
+	location     *time.Location
 	passedIds    []int
 	readyTaskIds chan int
 	runningTasks *localcache
@@ -392,5 +399,5 @@ func (list *pgTaskList) _fetchOne(ctx context.Context, id int) (common.Task, err
 
 // timeNowStr 当前时间
 func (list *pgTaskList) timeNowStr() string {
-	return time.Now().Format("2006-01-02 15:04:05")
+	return time.Now().In(list.location).Format("2006-01-02 15:04:05")
 }
